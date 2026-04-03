@@ -261,7 +261,7 @@ def _extract_final_prompt(lines: list[str], request_id: str) -> tuple[dict[str, 
     errors: list[str] = []
     try:
         payload = _load_prompt_payload(raw_payload)
-        messages = payload.get("messages") if isinstance(payload, dict) else None
+        messages = _extract_prompt_messages(payload)
         if not isinstance(messages, list) or len(messages) < 2:
             raise ValueError("messages field missing or incomplete")
         system = _normalize_prompt_content(messages[0].get("content", ""))
@@ -289,7 +289,7 @@ def _load_prompt_payload(raw_payload: str) -> Any:
     current: Any = raw_payload
     last_error: Exception | None = None
     for _ in range(3):
-        if isinstance(current, dict):
+        if isinstance(current, (dict, list)):
             return current
         if not isinstance(current, str):
             break
@@ -304,11 +304,22 @@ def _load_prompt_payload(raw_payload: str) -> Any:
                 last_error = exc
         else:
             break
-    if isinstance(current, dict):
+    if isinstance(current, (dict, list)):
         return current
     if last_error is not None:
         raise ValueError(str(last_error))
-    raise ValueError("payload is not a dict-like object")
+    raise ValueError("payload is not a dict/list-like object")
+
+
+def _extract_prompt_messages(payload: Any) -> list[dict[str, Any]] | None:
+    if isinstance(payload, list):
+        return payload
+    if not isinstance(payload, dict):
+        return None
+    messages = payload.get("messages")
+    if isinstance(messages, list):
+        return messages
+    return None
 
 
 def _extract_after_prompt_keyword(line: str) -> str:

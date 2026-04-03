@@ -56,6 +56,14 @@ class BrokenIR:
 SELECT broken FROM data
 """
 
+LIST_PROMPT_LOG = """2026-04-02 21:00:01.665 [INFO] [423456789012346] sql_template_match hit query: 近7天销售额是多少
+2026-04-02 21:00:01.770 [INFO] [423456789012346] 生成器任务：[{'role': 'system', 'content': 'line 1\\nline 2 有个人叫\\'小明\\'\\n哈哈哈'}, {'role': 'user', 'content': 'line 3\\nline 4\\n'}]
+2026-04-02 21:00:01.780 [INFO] [423456789012346] 最终的IR
+@dataclass
+class ListPromptIR:
+tables = get_tables_columns(table_exprs)
+"""
+
 
 class ExtractorTests(unittest.TestCase):
     def test_extract_report_handles_complex_fixture_file(self) -> None:
@@ -154,6 +162,18 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn("最终的IR", match["generated_ir"])
         self.assertIn("generated_ir", "".join(match["parse_errors"]))
         self.assertIn("complete_ir", match["missing_sections"])
+
+    def test_extract_report_parses_python_message_list_prompt(self) -> None:
+        report = extract_report(LIST_PROMPT_LOG, "list-prompt.log")
+
+        match = report["questions"][0]["matches"][0]
+        self.assertEqual(match["final_prompt"]["system"], "line 1\nline 2 有个人叫'小明'\n哈哈哈")
+        self.assertEqual(match["final_prompt"]["user"], "line 3\nline 4\n")
+        self.assertEqual(
+            match["final_prompt"]["combined"],
+            "line 1\nline 2 有个人叫'小明'\n哈哈哈\n\nline 3\nline 4\n",
+        )
+        self.assertNotIn("final_prompt", "".join(match["parse_errors"]))
 
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")
