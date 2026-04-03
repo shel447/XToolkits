@@ -161,6 +161,11 @@ def render_html(report: dict[str, Any]) -> str:
       margin: 0;
       font-size: 16px;
     }}
+    .copy-actions {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }}
     .copy-btn {{
       width: 28px;
       height: 28px;
@@ -174,6 +179,19 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .copy-btn:hover {{
       background: #e8f5f2;
+    }}
+    .copy-feedback {{
+      min-width: 36px;
+      font-size: 12px;
+      color: var(--accent);
+      opacity: 0;
+      transform: translateY(-2px);
+      transition: opacity 0.16s ease, transform 0.16s ease;
+      pointer-events: none;
+    }}
+    .copy-feedback.visible {{
+      opacity: 1;
+      transform: translateY(0);
     }}
     pre {{
       margin: 0;
@@ -229,6 +247,7 @@ def render_html(report: dict[str, Any]) -> str:
     async function copySection(button) {{
       const targetId = button.getAttribute('data-copy-target');
       const target = document.getElementById(targetId);
+      const feedback = button.parentElement ? button.parentElement.querySelector('.copy-feedback') : null;
       if (!target) {{
         return;
       }}
@@ -245,8 +264,28 @@ def render_html(report: dict[str, Any]) -> str:
           document.body.removeChild(temp);
         }}
         button.setAttribute('title', '已复制');
+        if (feedback) {{
+          feedback.textContent = '已复制';
+          feedback.classList.add('visible');
+          if (feedback._timer) {{
+            clearTimeout(feedback._timer);
+          }}
+          feedback._timer = setTimeout(() => {{
+            feedback.classList.remove('visible');
+          }}, 1200);
+        }}
       }} catch (error) {{
         button.setAttribute('title', '复制失败');
+        if (feedback) {{
+          feedback.textContent = '复制失败';
+          feedback.classList.add('visible');
+          if (feedback._timer) {{
+            clearTimeout(feedback._timer);
+          }}
+          feedback._timer = setTimeout(() => {{
+            feedback.classList.remove('visible');
+          }}, 1200);
+        }}
       }}
     }}
   </script>
@@ -338,7 +377,10 @@ def _render_copyable_text_section(title: str, content: str, target_id: str) -> s
     <section class="section">
       <div class="section-header">
         <h3>{escape(title)}</h3>
-        <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
+        <div class="copy-actions">
+          <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
+          <span class="copy-feedback" aria-live="polite">已复制</span>
+        </div>
       </div>
       <pre id="{escape(target_id)}">{escape(content)}</pre>
     </section>
