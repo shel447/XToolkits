@@ -181,14 +181,14 @@ def render_html(report: dict[str, Any]) -> str:
       background: #e8f5f2;
     }}
     .execute-btn {{
+      width: 28px;
       height: 28px;
-      padding: 0 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: #f8fbff;
       color: var(--accent);
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1;
     }}
     .execute-btn:hover {{
@@ -410,7 +410,7 @@ def _render_copyable_text_section(
         execute_button = (
             f'<button type="button" class="execute-btn" '
             f'data-execute-target="{escape(target_id)}" '
-            f'onclick="executeIR(this)" title="执行">执行</button>'
+            f'onclick="executeIR(this)" title="执行">▶</button>'
         )
     return f"""
     <section class="section">

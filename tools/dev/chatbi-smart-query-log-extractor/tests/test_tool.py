@@ -205,7 +205,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('data-copy-target="complete-ir-question-1-match-1"', html)
         self.assertIn('class="execute-btn"', html)
         self.assertIn('data-execute-target="complete-ir-question-1-match-1"', html)
-        self.assertIn(">执行</button>", html)
+        self.assertIn(">▶</button>", html)
         self.assertIn("executeIR(this)", html)
         self.assertIn("feedback.classList.add('visible')", html)
         self.assertIn("copySection(this)", html)
