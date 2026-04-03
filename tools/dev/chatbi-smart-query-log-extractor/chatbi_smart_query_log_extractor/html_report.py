@@ -150,6 +150,31 @@ def render_html(report: dict[str, Any]) -> str:
     .collapsible-body {{
       margin-top: 12px;
     }}
+    .section-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }}
+    .section-header h3 {{
+      margin: 0;
+      font-size: 16px;
+    }}
+    .copy-btn {{
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f8fbff;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+    }}
+    .copy-btn:hover {{
+      background: #e8f5f2;
+    }}
     pre {{
       margin: 0;
       padding: 14px;
@@ -200,6 +225,31 @@ def render_html(report: dict[str, Any]) -> str:
       <main class="matches">{details_html}</main>
     </div>
   </div>
+  <script>
+    async function copySection(button) {{
+      const targetId = button.getAttribute('data-copy-target');
+      const target = document.getElementById(targetId);
+      if (!target) {{
+        return;
+      }}
+      const text = target.innerText;
+      try {{
+        if (navigator.clipboard && navigator.clipboard.writeText) {{
+          await navigator.clipboard.writeText(text);
+        }} else {{
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+        }}
+        button.setAttribute('title', '已复制');
+      }} catch (error) {{
+        button.setAttribute('title', '复制失败');
+      }}
+    }}
+  </script>
 </body>
 </html>"""
 
@@ -223,13 +273,13 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     title = f"{match['anchor_timestamp']} | {match['request_id']} | 第 {match['index']} 次调用"
     sections = [
         _render_text_section("命中锚点日志", match["anchor_line"]),
-        _render_list_section("RAG 检索结果", match["rag_results"]),
+        _render_collapsible_list_section("RAG 检索结果", match["rag_results"]),
         _render_text_section("问题改写", match["rewritten_question"]),
         _render_list_section("表检索结果", match["recalled_tables"]),
         _render_collapsible_text_section("IR 表定义", match["ir_table_definition"]),
         _render_collapsible_prompt_section(match["final_prompt"]),
         _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
-        _render_text_section("完整 IR", match["complete_ir"]),
+        _render_copyable_text_section("完整 IR", match["complete_ir"], f"complete-ir-{anchor_id}"),
     ]
 
     if match["missing_sections"]:
@@ -281,6 +331,20 @@ def _render_collapsible_text_section(title: str, content: str) -> str:
     """
 
 
+def _render_copyable_text_section(title: str, content: str, target_id: str) -> str:
+    if not content:
+        return _render_text_section(title, content)
+    return f"""
+    <section class="section">
+      <div class="section-header">
+        <h3>{escape(title)}</h3>
+        <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
+      </div>
+      <pre id="{escape(target_id)}">{escape(content)}</pre>
+    </section>
+    """
+
+
 def _render_list_section(title: str, items: list[str], kind: str | None = None) -> str:
     if not items:
         return f"""
@@ -296,6 +360,21 @@ def _render_list_section(title: str, items: list[str], kind: str | None = None) 
       <h3>{escape(title)}</h3>
       <ul class="{escape(class_name)}">{rendered_items}</ul>
     </section>
+    """
+
+
+def _render_collapsible_list_section(title: str, items: list[str], kind: str | None = None) -> str:
+    if not items:
+        return _render_list_section(title, items, kind)
+    class_name = kind or "list"
+    rendered_items = "".join(f"<li>{escape(item)}</li>" for item in items)
+    return f"""
+    <details class="section collapsible">
+      <summary>{escape(title)}</summary>
+      <div class="collapsible-body">
+        <ul class="{escape(class_name)}">{rendered_items}</ul>
+      </div>
+    </details>
     """
 
 
