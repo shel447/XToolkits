@@ -1,0 +1,4 @@
+/.tmp-test-artifacts/
+/output/
+/chatbi_smart_query_log_extractor/__pycache__/
+/tests/__pycache__/

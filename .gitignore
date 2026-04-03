@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+tools/dev/chatbi-smart-query-log-extractor/.tmp-test-artifacts/
+tools/dev/chatbi-smart-query-log-extractor/output/

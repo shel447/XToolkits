@@ -1,0 +1,59 @@
+id: chatbi-smart-query-log-extractor
+name: ChatBI Smart Query Log Extractor
+summary: Extract key ChatBI smart-query log segments by exact question and 15-digit request ID, then render JSON and HTML outputs.
+type: script
+scope: shared
+category: dev
+status: temporary
+project: ChatBI
+tags:
+  - chatbi
+  - log-analysis
+  - html-report
+runtime: python
+entrypoint: python -m chatbi_smart_query_log_extractor
+created_at: 2026-04-03
+last_verified_at: 2026-04-03
+dependencies: []
+artifacts:
+  - "*.json"
+  - "*.html"
+interface:
+  command: python -m chatbi_smart_query_log_extractor
+  args:
+    - name: log
+      required: true
+      description: Path to the ChatBI plain-text log file.
+    - name: question
+      required: true
+      description: Exact smart-query question text to match in anchor logs.
+    - name: output-dir
+      required: false
+      description: Directory for generated JSON and HTML outputs.
+    - name: encoding
+      required: false
+      description: Explicit log encoding. When omitted, the tool tries UTF-8 and GBK variants.
+    - name: json-only
+      required: false
+      description: Generate only the JSON result.
+    - name: html-only
+      required: false
+      description: Generate only the HTML result.
+  input:
+    kind: file
+    format: text log
+  output:
+    kind: files
+    format: json + html
+  exit_codes:
+    0: success with at least one fully parsed match
+    1: runtime failure while reading or writing files
+    2: invalid input arguments
+    3: no matching call found
+    4: matches found but at least one section is missing or partially parsed
+  side_effects:
+    - creates output directories
+    - writes JSON and HTML report files
+  examples:
+    - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --question "近7天销售额是多少" --output-dir .\output
+      description: Extract all matching calls for one exact question and generate both output formats.

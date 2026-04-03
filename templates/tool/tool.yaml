@@ -1,0 +1,40 @@
+id: example-tool
+name: Example Tool
+summary: One-line summary of what this tool does.
+type: script
+scope: shared
+category: dev
+status: active
+project:
+tags:
+  - example
+runtime: powershell
+entrypoint: .\run.ps1
+created_at: 2026-04-03
+last_verified_at:
+dependencies: []
+artifacts: []
+interface:
+  command: .\run.ps1
+  args:
+    - name: input
+      required: true
+      description: Path to the primary input.
+    - name: output
+      required: false
+      description: Path to the output artifact.
+  input:
+    kind: file
+    format: txt
+  output:
+    kind: file
+    format: json
+  exit_codes:
+    0: success
+    2: validation_error
+    3: runtime_error
+  side_effects:
+    - writes output files
+  examples:
+    - command: .\run.ps1 -Input .\sample.txt -Output .\result.json
+      description: Convert one sample input into JSON output.
