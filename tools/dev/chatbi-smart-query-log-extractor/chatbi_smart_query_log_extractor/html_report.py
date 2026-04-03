@@ -316,7 +316,11 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         _render_text_section("问题改写", match["rewritten_question"]),
         _render_list_section("表检索结果", match["recalled_tables"]),
         _render_collapsible_text_section("IR 表定义", match["ir_table_definition"]),
-        _render_collapsible_prompt_section(match["final_prompt"]),
+        _render_collapsible_copyable_text_section(
+            "最终 Prompt",
+            match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
+            f"final-prompt-{anchor_id}",
+        ),
         _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
         _render_copyable_text_section("完整 IR", match["complete_ir"], f"complete-ir-{anchor_id}"),
     ]
@@ -387,6 +391,26 @@ def _render_copyable_text_section(title: str, content: str, target_id: str) -> s
     """
 
 
+def _render_collapsible_copyable_text_section(title: str, content: str, target_id: str) -> str:
+    if not content:
+        return _render_text_section(title, content)
+    return f"""
+    <details class="section collapsible">
+      <summary>{escape(title)}</summary>
+      <div class="collapsible-body">
+        <div class="section-header">
+          <div></div>
+          <div class="copy-actions">
+            <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
+            <span class="copy-feedback" aria-live="polite">已复制</span>
+          </div>
+        </div>
+        <pre id="{escape(target_id)}">{escape(content)}</pre>
+      </div>
+    </details>
+    """
+
+
 def _render_list_section(title: str, items: list[str], kind: str | None = None) -> str:
     if not items:
         return f"""
@@ -419,51 +443,3 @@ def _render_collapsible_list_section(title: str, items: list[str], kind: str | N
     </details>
     """
 
-
-def _render_prompt_section(prompt: dict[str, str]) -> str:
-    if not any(prompt.values()):
-        return """
-        <section class="section">
-          <h3>最终 Prompt</h3>
-          <div class="missing">未命中该字段</div>
-        </section>
-        """
-
-    blocks = []
-    if prompt.get("system"):
-        blocks.append(_render_text_section("Prompt / system", prompt["system"]))
-    if prompt.get("user"):
-        blocks.append(_render_text_section("Prompt / user", prompt["user"]))
-    if prompt.get("combined"):
-        blocks.append(_render_text_section("Prompt / combined", prompt["combined"]))
-    if prompt.get("raw") and not prompt.get("combined"):
-        blocks.append(_render_text_section("Prompt / raw", prompt["raw"]))
-    return f"""
-    <section class="section">
-      <h3>最终 Prompt</h3>
-      {''.join(blocks)}
-    </section>
-    """
-
-
-def _render_collapsible_prompt_section(prompt: dict[str, str]) -> str:
-    if not any(prompt.values()):
-        return _render_prompt_section(prompt)
-
-    blocks = []
-    if prompt.get("system"):
-        blocks.append(_render_text_section("Prompt / system", prompt["system"]))
-    if prompt.get("user"):
-        blocks.append(_render_text_section("Prompt / user", prompt["user"]))
-    if prompt.get("combined"):
-        blocks.append(_render_text_section("Prompt / combined", prompt["combined"]))
-    if prompt.get("raw") and not prompt.get("combined"):
-        blocks.append(_render_text_section("Prompt / raw", prompt["raw"]))
-    return f"""
-    <details class="section collapsible">
-      <summary>最终 Prompt</summary>
-      <div class="collapsible-body">
-        {''.join(blocks)}
-      </div>
-    </details>
-    """
