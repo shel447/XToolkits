@@ -25,25 +25,33 @@ FULL_LOG = """2026-04-02 19:00:01.665 [INFO] [123456789012345] sql_template_matc
 2026-04-02 19:00:01.710 [INFO] [123456789012345] rewrite question from [old] [new] 请查询近7天销售额
 2026-04-02 19:00:01.720 [INFO] [123456789012345] Schema链接完成
 2026-04-02 19:00:01.730 [INFO] [123456789012345] 召回表: sales_order, shop_dim
-2026-04-02 19:00:01.740 [INFO] [123456789012345] 表定义的IR
-table sales_order(id, amount)
+2026-04-02 19:00:01.740 [INFO] [123456789012345] 表定义的IR：table sales_order(id, amount)
 table shop_dim(shop_id, shop_name)
 2026-04-02 19:00:01.760 [INFO] [123456789012345] code guardrail check result safe
 2026-04-02 19:00:01.770 [INFO] [123456789012345] 生成器任务：{"messages": [{"role": "system", "content": "你是助手\\n请生成IR"}, {"role": "user", "content": "问题：近7天销售额\\n请输出\\\\\\"IR\\\\\\""}]}
-2026-04-02 19:00:01.780 [INFO] [123456789012345] 推理结果
+2026-04-02 19:00:01.771 [DEBUG] [123456789012345] 生成器任务 fallback without colon
+2026-04-02 19:00:01.780 [INFO] [123456789012345] 最终的IR
+@dataclass
+class FinalIR:
+    metric: str
 SELECT amount FROM sales_order
-return result
+tables = get_tables_columns(table_exprs)
 2026-04-02 19:05:01.665 [INFO] [223456789012345] sql_template_match hit query: 近7天销售额是多少
 2026-04-02 19:05:01.710 [INFO] [223456789012345] rewrite question from [old] [new] 帮我查询近7天销售额
 2026-04-02 19:05:01.770 [INFO] [223456789012345] 生成器任务：{"messages": [{"role": "system", "content": "系统提示\\n第二次"}, {"role": "user", "content": "用户问题\\n第二次"}]}
-2026-04-02 19:05:01.780 [INFO] [223456789012345] 推理结果
+2026-04-02 19:05:01.780 [INFO] [223456789012345] 最终的IR
+@dataclass
+class SecondIR:
+    ds_filter: str
 SELECT amount FROM sales_order WHERE ds >= current_date - 7
-return result
+tables = get_tables_columns(table_exprs)
 """
 
 PARTIAL_LOG = """2026-04-02 20:00:01.665 [INFO] [323456789012345] sql_template_match hit query: 近7天销售额是多少
 2026-04-02 20:00:01.770 [INFO] [323456789012345] 生成器任务：not-a-json-payload
-2026-04-02 20:00:01.780 [INFO] [323456789012345] 推理结果
+2026-04-02 20:00:01.780 [INFO] [323456789012345] 最终的IR
+@dataclass
+class BrokenIR:
 SELECT broken FROM data
 """
 
@@ -73,13 +81,16 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(first["rewritten_question"], "请帮我统计最近7天销售额")
         self.assertEqual(first["recalled_tables"], ["2026-04-03 09:15:00.050 [INFO] [423456789012345] Schema链接完成", "sales_order", "dim_calendar"])
         self.assertIn("join sales_order.ds = dim_calendar.ds", first["ir_table_definition"])
+        self.assertNotIn("表定义的IR：", first["ir_table_definition"])
+        self.assertIn("\n\n@dataclass", first["complete_ir"])
         self.assertEqual(first["parse_errors"], [])
 
         second = first_group["matches"][1]
         self.assertEqual(second["final_prompt"]["system"], "系统角色\n路径：\\\\server\\share\\prompt.txt")
         self.assertEqual(second["final_prompt"]["user"], '请输出"门店销售额" IR\n并保留 shop_id')
         self.assertIn("shop_id", second["generated_ir"])
-        self.assertNotIn("推理结果", second["generated_ir"])
+        self.assertNotIn("最终的IR", second["generated_ir"])
+        self.assertIn("@dataclass", second["generated_ir"])
 
         second_group = report["questions"][1]
         self.assertEqual(second_group["question"], ALT_QUESTION)
@@ -90,6 +101,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("final_prompt: failed to parse payload", "".join(third["parse_errors"]))
         self.assertIn("ir_table_definition: missing terminator", "".join(third["parse_errors"]))
         self.assertIn("generated_ir: missing terminator", "".join(third["parse_errors"]))
+        self.assertIn("complete_ir", third["missing_sections"])
 
     def test_extract_report_collects_expected_sections_for_multiple_calls(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter=QUESTION)
@@ -105,14 +117,16 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("knowledge retriever success", first["rag_results"][0])
         self.assertEqual(first["rewritten_question"], "请查询近7天销售额")
         self.assertIn("sales_order, shop_dim", first["recalled_tables"])
-        self.assertIn("表定义的IR", first["ir_table_definition"])
+        self.assertTrue(first["ir_table_definition"].startswith("table sales_order(id, amount)"))
+        self.assertNotIn("表定义的IR", first["ir_table_definition"])
         self.assertNotIn("code guardrail check result", first["ir_table_definition"])
         self.assertEqual(first["final_prompt"]["system"], "你是助手\n请生成IR")
         self.assertEqual(first["final_prompt"]["user"], '问题：近7天销售额\n请输出"IR"')
         self.assertIn("你是助手\n请生成IR", first["final_prompt"]["combined"])
-        self.assertTrue(first["generated_ir"].startswith("SELECT amount FROM sales_order"))
-        self.assertIn("return result", first["generated_ir"])
-        self.assertNotIn("推理结果", first["generated_ir"])
+        self.assertTrue(first["generated_ir"].startswith("@dataclass"))
+        self.assertIn("tables = get_tables_columns(table_exprs)", first["generated_ir"])
+        self.assertNotIn("最终的IR", first["generated_ir"])
+        self.assertIn("table shop_dim(shop_id, shop_name)\n\n@dataclass", first["complete_ir"])
         self.assertEqual(first["missing_sections"], [])
         self.assertEqual(first["parse_errors"], [])
 
@@ -121,6 +135,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(second["anchor_timestamp"], "2026-04-02 19:05:01.665")
         self.assertIn("rag_results", second["missing_sections"])
         self.assertIn("ir_table_definition", second["missing_sections"])
+        self.assertIn("complete_ir", second["missing_sections"])
 
     def test_extract_report_marks_partial_failures_and_preserves_prompt_raw_text(self) -> None:
         report = extract_report(PARTIAL_LOG, "partial.log")
@@ -133,7 +148,9 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("final_prompt", "".join(match["parse_errors"]))
         self.assertEqual(match["final_prompt"]["raw"], "not-a-json-payload")
         self.assertIn("SELECT broken FROM data", match["generated_ir"])
+        self.assertNotIn("最终的IR", match["generated_ir"])
         self.assertIn("generated_ir", "".join(match["parse_errors"]))
+        self.assertIn("complete_ir", match["missing_sections"])
 
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")
@@ -150,7 +167,11 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("423456789012345", html)
         self.assertIn('href="#question-1"', html)
         self.assertIn('href="#question-2"', html)
-        self.assertIn("最终 Prompt", html)
+        self.assertIn("<summary>IR 表定义</summary>", html)
+        self.assertIn("<summary>最终 Prompt</summary>", html)
+        self.assertIn("<summary>生成 IR 结果</summary>", html)
+        self.assertNotIn('<details class="section collapsible" open>', html)
+        self.assertIn("完整 IR", html)
         self.assertIn("未命中该字段", html)
 
 

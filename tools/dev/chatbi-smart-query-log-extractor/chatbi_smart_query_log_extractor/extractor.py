@@ -18,11 +18,11 @@ RAG_KEYWORD = "knowledge retriever success"
 REWRITE_KEYWORD = "rewrite question from"
 SCHEMA_KEYWORD = "Schema链接完成"
 RECALL_KEYWORD = "召回表"
-IR_DEF_START = "表定义的IR"
+IR_DEF_START = "表定义的IR："
 IR_DEF_STOP = "code guardrail check result"
-PROMPT_KEYWORD = "生成器任务"
-IR_RESULT_START = "推理结果"
-IR_RESULT_STOP = "return result"
+PROMPT_KEYWORD = "生成器任务："
+IR_RESULT_START = "最终的IR"
+IR_RESULT_STOP = "tables = get_tables_columns(table_exprs)"
 
 
 def read_log_text(log_path: str | Path, encoding: str | None = None) -> str:
@@ -149,6 +149,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         start_keyword=IR_DEF_START,
         stop_keyword=IR_DEF_STOP,
         include_stop=False,
+        start_mode="after_keyword",
     )
     generated_ir, generated_ir_errors = _extract_multiline_block(
         lines,
@@ -156,9 +157,15 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         start_keyword=IR_RESULT_START,
         stop_keyword=IR_RESULT_STOP,
         include_stop=True,
-        include_start=False,
+        start_mode="after_keyword",
     )
     final_prompt, final_prompt_errors = _extract_final_prompt(lines, request_id)
+    complete_ir, complete_ir_errors = _build_complete_ir(
+        ir_table_definition,
+        generated_ir,
+        ir_def_errors=ir_def_errors,
+        generated_ir_errors=generated_ir_errors,
+    )
 
     missing_sections: list[str] = []
     if not rag_results:
@@ -173,8 +180,10 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         missing_sections.append("final_prompt")
     if not generated_ir:
         missing_sections.append("generated_ir")
+    if not complete_ir:
+        missing_sections.append("complete_ir")
 
-    parse_errors = [*ir_def_errors, *final_prompt_errors, *generated_ir_errors]
+    parse_errors = [*ir_def_errors, *final_prompt_errors, *generated_ir_errors, *complete_ir_errors]
 
     return {
         "index": index,
@@ -188,6 +197,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "ir_table_definition": ir_table_definition,
         "final_prompt": final_prompt,
         "generated_ir": generated_ir,
+        "complete_ir": complete_ir,
         "missing_sections": missing_sections,
         "parse_errors": parse_errors,
     }
@@ -199,7 +209,7 @@ def _extract_multiline_block(
     start_keyword: str,
     stop_keyword: str,
     include_stop: bool,
-    include_start: bool = True,
+    start_mode: str = "whole_line",
 ) -> tuple[str, list[str]]:
     start_index: int | None = None
     for index, line in enumerate(lines):
@@ -215,8 +225,14 @@ def _extract_multiline_block(
     for index in range(start_index, len(lines)):
         line = lines[index]
         if index == start_index:
-            if include_start:
+            if start_mode == "whole_line":
                 block_lines.append(line)
+            elif start_mode == "after_keyword":
+                start_content = _extract_after_keyword(line, start_keyword)
+                if start_content:
+                    block_lines.append(start_content)
+            elif start_mode != "skip":
+                raise ValueError(f"unsupported start_mode: {start_mode}")
             continue
         if stop_keyword in line:
             if include_stop:
@@ -271,10 +287,41 @@ def _normalize_prompt_content(value: Any) -> str:
 
 
 def _extract_after_prompt_keyword(line: str) -> str:
-    for marker in ("生成器任务：", "生成器任务:"):
-        if marker in line:
-            return line.split(marker, 1)[1].strip()
-    return line.strip()
+    return _extract_after_keyword(line, PROMPT_KEYWORD)
+
+
+def _extract_after_keyword(line: str, keyword: str) -> str:
+    if keyword not in line:
+        return ""
+    remainder = line.split(keyword, 1)[1]
+    return remainder.lstrip(" ：:").strip()
+
+
+def _build_complete_ir(
+    ir_table_definition: str,
+    generated_ir: str,
+    ir_def_errors: list[str],
+    generated_ir_errors: list[str],
+) -> tuple[str, list[str]]:
+    if not ir_table_definition or not generated_ir:
+        return "", []
+    if ir_def_errors or generated_ir_errors:
+        return "", ["complete_ir: source sections incomplete"]
+
+    generated_lines = generated_ir.splitlines()
+    anchor_index: int | None = None
+    for index, line in enumerate(generated_lines):
+        if line.strip() == "@dataclass":
+            anchor_index = index
+            break
+
+    if anchor_index is None:
+        return "", ["complete_ir: missing '@dataclass' insertion anchor"]
+
+    before_anchor = "\n".join(generated_lines[:anchor_index]).strip()
+    after_anchor = "\n".join(generated_lines[anchor_index:]).strip()
+    sections = [section for section in (before_anchor, ir_table_definition.strip(), after_anchor) if section]
+    return "\n\n".join(sections).strip(), []
 
 
 def _extract_after_last_bracket(line: str) -> str:

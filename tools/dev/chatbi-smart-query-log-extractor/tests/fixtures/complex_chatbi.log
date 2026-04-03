@@ -7,17 +7,20 @@
 2026-04-03 09:15:00.050 [INFO] [423456789012345] Schema链接完成
 2026-04-03 09:15:00.055 [INFO] [423456789012345] 召回表: sales_order
 2026-04-03 09:15:00.056 [INFO] [423456789012345] 召回表: dim_calendar
-2026-04-03 09:15:00.060 [INFO] [423456789012345] 表定义的IR
-table sales_order(order_id, amount, ds)
+2026-04-03 09:15:00.060 [INFO] [423456789012345] 表定义的IR：table sales_order(order_id, amount, ds)
 table dim_calendar(ds, week_no)
 join sales_order.ds = dim_calendar.ds
 2026-04-03 09:15:00.085 [INFO] [423456789012345] code guardrail check result safe
 2026-04-03 09:15:00.090 [INFO] [423456789012345] 生成器任务：{"messages":[{"role":"system","content":"你是ChatBI系统\\n请输出IR，不要解释。"},{"role":"user","content":"问题：近7天销售额是多少\\n过滤条件：无"}]}
-2026-04-03 09:15:00.095 [INFO] [423456789012345] 推理结果
+2026-04-03 09:15:00.091 [DEBUG] [423456789012345] 生成器任务 debug only without colon
+2026-04-03 09:15:00.095 [INFO] [423456789012345] 最终的IR
+@dataclass
+class DailySalesIR:
+    metric: str
 select sum(amount) as total_amount
 from sales_order
 where ds >= current_date - interval '7' day
-return result
+tables = get_tables_columns(table_exprs)
 
 2026-04-03 09:16:10.001 [INFO] [523456789012345] sql_template_match hit template=sales_amount_by_shop query: 近7天销售额是多少
 2026-04-03 09:16:10.010 [WARN] [523456789012345] feature flag disabled: irrelevant_switch=false
@@ -25,25 +28,28 @@ return result
 2026-04-03 09:16:10.030 [INFO] [523456789012345] rewrite question from [origin] [final] 统计最近七天门店销售额
 2026-04-03 09:16:10.040 [INFO] [523456789012345] Schema链接完成
 2026-04-03 09:16:10.045 [INFO] [523456789012345] 召回表: shop_sales_daily
-2026-04-03 09:16:10.050 [INFO] [523456789012345] 表定义的IR
-table shop_sales_daily(shop_id, sales_amount, ds)
+2026-04-03 09:16:10.050 [INFO] [523456789012345] 表定义的IR：table shop_sales_daily(shop_id, sales_amount, ds)
 filter ds recent_7d
 2026-04-03 09:16:10.070 [INFO] [523456789012345] code guardrail check result safe
 2026-04-03 09:16:10.080 [INFO] [523456789012345] 生成器任务："{\"messages\":[{\"role\":\"system\",\"content\":\"系统角色\\n路径：\\\\\\\\server\\\\share\\\\prompt.txt\"},{\"role\":\"user\",\"content\":\"请输出\\\"门店销售额\\\" IR\\n并保留 shop_id\"}]}"
-2026-04-03 09:16:10.090 [INFO] [523456789012345] 推理结果
+2026-04-03 09:16:10.090 [INFO] [523456789012345] 最终的IR
+@dataclass
+class ShopSalesIR:
+    granularity: str
 select shop_id, sum(sales_amount) as total_amount
 from shop_sales_daily
 group by shop_id
-return result
+tables = get_tables_columns(table_exprs)
 
 2026-04-03 09:17:20.001 [INFO] [623456789012345] sql_template_match hit template=broken_case query: 近7天销售额是多少?
 2026-04-03 09:17:20.015 [INFO] [623456789012345] Schema链接完成
 2026-04-03 09:17:20.020 [INFO] [623456789012345] 召回表: temp_sales_debug
-2026-04-03 09:17:20.030 [INFO] [623456789012345] 表定义的IR
-table temp_sales_debug(ds, amount, flag)
+2026-04-03 09:17:20.030 [INFO] [623456789012345] 表定义的IR：table temp_sales_debug(ds, amount, flag)
 2026-04-03 09:17:20.050 [INFO] [777777777777777] unrelated other request started
 2026-04-03 09:17:20.060 [INFO] [623456789012345] 生成器任务：not-a-json-payload
-2026-04-03 09:17:20.070 [INFO] [623456789012345] 推理结果
+2026-04-03 09:17:20.070 [INFO] [623456789012345] 最终的IR
+@dataclass
+class DebugIR:
 select amount
 from temp_sales_debug
 where flag = 'debug'

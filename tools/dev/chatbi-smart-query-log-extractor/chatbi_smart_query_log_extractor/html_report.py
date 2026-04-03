@@ -121,6 +121,35 @@ def render_html(report: dict[str, Any]) -> str:
       margin: 0 0 8px;
       font-size: 16px;
     }}
+    .collapsible {{
+      margin-top: 18px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 12px 14px;
+    }}
+    .collapsible > summary {{
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      list-style: none;
+    }}
+    .collapsible > summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .collapsible > summary::before {{
+      content: "▸";
+      display: inline-block;
+      margin-right: 8px;
+      color: var(--accent);
+      transition: transform 0.15s ease;
+    }}
+    .collapsible[open] > summary::before {{
+      transform: rotate(90deg);
+    }}
+    .collapsible-body {{
+      margin-top: 12px;
+    }}
     pre {{
       margin: 0;
       padding: 14px;
@@ -197,9 +226,10 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         _render_list_section("RAG 检索结果", match["rag_results"]),
         _render_text_section("问题改写", match["rewritten_question"]),
         _render_list_section("表检索结果", match["recalled_tables"]),
-        _render_text_section("IR 表定义", match["ir_table_definition"]),
-        _render_prompt_section(match["final_prompt"]),
-        _render_text_section("生成 IR 结果", match["generated_ir"]),
+        _render_collapsible_text_section("IR 表定义", match["ir_table_definition"]),
+        _render_collapsible_prompt_section(match["final_prompt"]),
+        _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
+        _render_text_section("完整 IR", match["complete_ir"]),
     ]
 
     if match["missing_sections"]:
@@ -235,6 +265,19 @@ def _render_text_section(title: str, content: str) -> str:
       <h3>{escape(title)}</h3>
       <pre>{escape(content)}</pre>
     </section>
+    """
+
+
+def _render_collapsible_text_section(title: str, content: str) -> str:
+    if not content:
+        return _render_text_section(title, content)
+    return f"""
+    <details class="section collapsible">
+      <summary>{escape(title)}</summary>
+      <div class="collapsible-body">
+        <pre>{escape(content)}</pre>
+      </div>
+    </details>
     """
 
 
@@ -279,4 +322,27 @@ def _render_prompt_section(prompt: dict[str, str]) -> str:
       <h3>最终 Prompt</h3>
       {''.join(blocks)}
     </section>
+    """
+
+
+def _render_collapsible_prompt_section(prompt: dict[str, str]) -> str:
+    if not any(prompt.values()):
+        return _render_prompt_section(prompt)
+
+    blocks = []
+    if prompt.get("system"):
+        blocks.append(_render_text_section("Prompt / system", prompt["system"]))
+    if prompt.get("user"):
+        blocks.append(_render_text_section("Prompt / user", prompt["user"]))
+    if prompt.get("combined"):
+        blocks.append(_render_text_section("Prompt / combined", prompt["combined"]))
+    if prompt.get("raw") and not prompt.get("combined"):
+        blocks.append(_render_text_section("Prompt / raw", prompt["raw"]))
+    return f"""
+    <details class="section collapsible">
+      <summary>最终 Prompt</summary>
+      <div class="collapsible-body">
+        {''.join(blocks)}
+      </div>
+    </details>
     """

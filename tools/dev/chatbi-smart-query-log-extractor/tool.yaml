@@ -1,6 +1,6 @@
 id: chatbi-smart-query-log-extractor
 name: ChatBI Smart Query Log Extractor
-summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, then extract call-level key segments and render JSON and HTML outputs.
+summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, then extract call-level key segments, derived complete IR, and render JSON and HTML outputs.
 type: script
 scope: shared
 category: dev
@@ -13,7 +13,7 @@ tags:
 runtime: python
 entrypoint: python -m chatbi_smart_query_log_extractor
 created_at: 2026-04-03
-last_verified_at: 2026-04-03
+last_verified_at: 2026-04-04
 dependencies: []
 artifacts:
   - "*.json"
@@ -45,6 +45,15 @@ interface:
   output:
     kind: files
     format: json + html
+    fields:
+      - question groups
+      - rag_results
+      - rewritten_question
+      - recalled_tables
+      - ir_table_definition
+      - final_prompt
+      - generated_ir
+      - complete_ir
   exit_codes:
     0: success with at least one fully parsed match
     1: runtime failure while reading or writing files
