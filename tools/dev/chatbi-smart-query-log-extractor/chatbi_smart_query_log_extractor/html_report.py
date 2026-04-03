@@ -180,6 +180,20 @@ def render_html(report: dict[str, Any]) -> str:
     .copy-btn:hover {{
       background: #e8f5f2;
     }}
+    .execute-btn {{
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f8fbff;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+    }}
+    .execute-btn:hover {{
+      background: #e8f5f2;
+    }}
     .copy-feedback {{
       min-width: 36px;
       font-size: 12px;
@@ -288,6 +302,10 @@ def render_html(report: dict[str, Any]) -> str:
         }}
       }}
     }}
+
+    function executeIR(button) {{
+      button.setAttribute('title', '待接入');
+    }}
   </script>
 </body>
 </html>"""
@@ -322,7 +340,12 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             f"final-prompt-{anchor_id}",
         ),
         _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
-        _render_copyable_text_section("完整 IR", match["complete_ir"], f"complete-ir-{anchor_id}"),
+        _render_copyable_text_section(
+            "完整 IR",
+            match["complete_ir"],
+            f"complete-ir-{anchor_id}",
+            show_execute=True,
+        ),
     ]
 
     if match["missing_sections"]:
@@ -374,14 +397,27 @@ def _render_collapsible_text_section(title: str, content: str) -> str:
     """
 
 
-def _render_copyable_text_section(title: str, content: str, target_id: str) -> str:
+def _render_copyable_text_section(
+    title: str,
+    content: str,
+    target_id: str,
+    show_execute: bool = False,
+) -> str:
     if not content:
         return _render_text_section(title, content)
+    execute_button = ""
+    if show_execute:
+        execute_button = (
+            f'<button type="button" class="execute-btn" '
+            f'data-execute-target="{escape(target_id)}" '
+            f'onclick="executeIR(this)" title="执行">执行</button>'
+        )
     return f"""
     <section class="section">
       <div class="section-header">
         <h3>{escape(title)}</h3>
         <div class="copy-actions">
+          {execute_button}
           <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
           <span class="copy-feedback" aria-live="polite">已复制</span>
         </div>
@@ -442,4 +478,3 @@ def _render_collapsible_list_section(title: str, items: list[str], kind: str | N
       </div>
     </details>
     """
-
