@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from . import __version__
 
+import re
+
 TIMESTAMP_RE = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")
 REQUEST_ID_RE = re.compile(r"(?<!\d)(?P<request_id>\d{15})(?!\d)")
-ANCHOR_QUESTION_RE = re.compile(r"user_question=(?P<question>.*?)\s+sql_template_matc\b")
 
-ANCHOR_KEYWORD = "sql_template_matc"
+ANCHOR_KEYWORD = "sql_template_match"
+QUERY_MARKER = "query:"
 RAG_KEYWORD = "knowledge retriever success"
 REWRITE_KEYWORD = "rewrite question from"
 SCHEMA_KEYWORD = "Schema链接完成"
@@ -40,47 +41,86 @@ def read_log_text(log_path: str | Path, encoding: str | None = None) -> str:
     return path.read_text()
 
 
-def extract_report(log_text: str, question: str, source_log: str) -> dict[str, Any]:
-    normalized_question = question.strip()
+def extract_report(
+    log_text: str,
+    source_log: str,
+    question_filter: str | None = None,
+) -> dict[str, Any]:
     lines = log_text.splitlines()
-    anchors = _find_anchors(lines, normalized_question)
-    matches = [_build_match(index + 1, anchor, lines) for index, anchor in enumerate(anchors)]
+    anchors = _collect_anchor_entries(lines)
+    selected_questions = _select_questions(anchors, question_filter)
+    question_groups = [
+        _build_question_group(question=question, anchors=anchors, lines=lines)
+        for question in selected_questions
+    ]
     report = {
         "tool": "chatbi-smart-query-log-extractor",
         "version": __version__,
         "source_log": source_log,
-        "question": normalized_question,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "total_matches": len(matches),
-        "matches": matches,
+        "total_questions": len(question_groups),
+        "questions": question_groups,
     }
     return report
 
 
 def has_partial_failures(report: dict[str, Any]) -> bool:
-    return any(match["missing_sections"] or match["parse_errors"] for match in report["matches"])
+    return any(
+        match["missing_sections"] or match["parse_errors"]
+        for question_group in report["questions"]
+        for match in question_group["matches"]
+    )
 
 
-def _find_anchors(lines: list[str], question: str) -> list[dict[str, Any]]:
+def _collect_anchor_entries(lines: list[str]) -> list[dict[str, Any]]:
     anchors: list[dict[str, Any]] = []
     for line_number, line in enumerate(lines, start=1):
-        if not question or ANCHOR_KEYWORD not in line:
+        if ANCHOR_KEYWORD not in line:
             continue
         anchor_question = _extract_anchor_question(line)
-        is_exact_match = anchor_question == question if anchor_question is not None else question in line
-        if is_exact_match:
-            request_id = _extract_request_id(line)
-            if request_id is None:
-                continue
-            anchors.append(
-                {
-                    "request_id": request_id,
-                    "anchor_timestamp": _extract_timestamp(line) or "",
-                    "anchor_line": line,
-                    "line_number": line_number,
-                }
-            )
+        if not anchor_question:
+            continue
+        request_id = _extract_request_id(line)
+        if request_id is None:
+            continue
+        anchors.append(
+            {
+                "question": anchor_question,
+                "request_id": request_id,
+                "anchor_timestamp": _extract_timestamp(line) or "",
+                "anchor_line": line,
+                "line_number": line_number,
+            }
+        )
     return anchors
+
+
+def _select_questions(anchors: list[dict[str, Any]], question_filter: str | None) -> list[str]:
+    normalized_filter = question_filter.strip() if question_filter is not None else None
+    seen: set[str] = set()
+    questions: list[str] = []
+    for anchor in anchors:
+        question = anchor["question"].strip()
+        if normalized_filter is not None and question != normalized_filter:
+            continue
+        if question in seen:
+            continue
+        seen.add(question)
+        questions.append(question)
+    return questions
+
+
+def _build_question_group(question: str, anchors: list[dict[str, Any]], lines: list[str]) -> dict[str, Any]:
+    matching_anchors = [anchor for anchor in anchors if anchor["question"] == question]
+    matches = [
+        _build_match(index + 1, anchor, lines)
+        for index, anchor in enumerate(matching_anchors)
+    ]
+    return {
+        "question": question,
+        "total_matches": len(matches),
+        "matches": matches,
+    }
 
 
 def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[str, Any]:
@@ -247,10 +287,10 @@ def _extract_request_id(line: str) -> str | None:
 
 
 def _extract_anchor_question(line: str) -> str | None:
-    match = ANCHOR_QUESTION_RE.search(line)
-    if not match:
+    marker_index = line.find(QUERY_MARKER)
+    if marker_index == -1:
         return None
-    return match.group("question").strip()
+    return line[marker_index + len(QUERY_MARKER) :].strip()
 
 
 def _extract_timestamp(line: str) -> str | None:

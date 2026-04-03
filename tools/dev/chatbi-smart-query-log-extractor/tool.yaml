@@ -1,6 +1,6 @@
 id: chatbi-smart-query-log-extractor
 name: ChatBI Smart Query Log Extractor
-summary: Extract key ChatBI smart-query log segments by exact question and 15-digit request ID, then render JSON and HTML outputs.
+summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, then extract call-level key segments and render JSON and HTML outputs.
 type: script
 scope: shared
 category: dev
@@ -25,8 +25,8 @@ interface:
       required: true
       description: Path to the ChatBI plain-text log file.
     - name: question
-      required: true
-      description: Exact smart-query question text to match in anchor logs.
+      required: false
+      description: Optional exact question filter. When omitted, the tool auto-discovers all unique questions from sql_template_match anchor logs.
     - name: output-dir
       required: false
       description: Directory for generated JSON and HTML outputs.
@@ -55,5 +55,7 @@ interface:
     - creates output directories
     - writes JSON and HTML report files
   examples:
+    - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output
+      description: Auto-discover all unique questions from the log and generate grouped JSON and HTML outputs.
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --question "近7天销售额是多少" --output-dir .\output
-      description: Extract all matching calls for one exact question and generate both output formats.
+      description: Extract only one exact question group from the discovered questions and generate both output formats.

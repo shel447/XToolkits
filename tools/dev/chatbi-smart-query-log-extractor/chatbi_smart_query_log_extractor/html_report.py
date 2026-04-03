@@ -5,21 +5,29 @@ from typing import Any
 
 
 def render_html(report: dict[str, Any]) -> str:
-    question = escape(report["question"])
     source_log = escape(report["source_log"])
     generated_at = escape(report["generated_at"])
-    total_matches = report["total_matches"]
+    total_questions = report["total_questions"]
+    total_matches = sum(question_group["total_matches"] for question_group in report["questions"])
 
     nav_items = []
     detail_sections = []
-    for match in report["matches"]:
-        anchor_id = f"match-{match['index']}"
-        nav_label = f"{match['anchor_timestamp']} | {match['request_id']}"
-        nav_items.append(f'<li><a href="#{anchor_id}">{escape(nav_label)}</a></li>')
-        detail_sections.append(_render_match(anchor_id, match))
+    for question_index, question_group in enumerate(report["questions"], start=1):
+        question_anchor_id = f"question-{question_index}"
+        question_label = question_group["question"]
+        match_nav_items = []
+        for match in question_group["matches"]:
+            anchor_id = f"{question_anchor_id}-match-{match['index']}"
+            nav_label = f"{match['anchor_timestamp']} | {match['request_id']}"
+            match_nav_items.append(f'<li><a href="#{anchor_id}">{escape(nav_label)}</a></li>')
+        nested_nav = f"<ul>{''.join(match_nav_items)}</ul>" if match_nav_items else ""
+        nav_items.append(
+            f'<li><a href="#{question_anchor_id}">{escape(question_label)}</a>{nested_nav}</li>'
+        )
+        detail_sections.append(_render_question_group(question_anchor_id, question_group))
 
-    nav_html = "".join(nav_items) if nav_items else "<li>未匹配到任何调用</li>"
-    details_html = "".join(detail_sections) if detail_sections else "<section class=\"empty\">未匹配到任何调用。</section>"
+    nav_html = "".join(nav_items) if nav_items else "<li>未发现任何问题</li>"
+    details_html = "".join(detail_sections) if detail_sections else "<section class=\"empty\">未发现任何问题。</section>"
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -86,10 +94,19 @@ def render_html(report: dict[str, Any]) -> str:
       display: grid;
       gap: 20px;
     }}
+    .question-group {{
+      display: grid;
+      gap: 16px;
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+    }}
     .match {{
       padding: 22px;
     }}
-    .match h2, .summary h1 {{
+    .match h2, .summary h1, .question-group h2 {{
       margin: 0 0 12px;
     }}
     .meta {{
@@ -141,14 +158,14 @@ def render_html(report: dict[str, Any]) -> str:
   <div class="page">
     <section class="summary">
       <h1>ChatBI 智能问数关键日志提取结果</h1>
-      <div class="meta">问题：{question}</div>
       <div class="meta">日志文件：{source_log}</div>
-      <div class="meta">命中调用数：{total_matches}</div>
+      <div class="meta">自动发现问题数：{total_questions}</div>
+      <div class="meta">命中调用总数：{total_matches}</div>
       <div class="meta">生成时间：{generated_at}</div>
     </section>
     <div class="layout">
       <aside class="nav">
-        <strong>调用导航</strong>
+        <strong>问题导航</strong>
         <ul>{nav_html}</ul>
       </aside>
       <main class="matches">{details_html}</main>
@@ -156,6 +173,21 @@ def render_html(report: dict[str, Any]) -> str:
   </div>
 </body>
 </html>"""
+
+
+def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> str:
+    match_sections = []
+    for match in question_group["matches"]:
+        match_anchor_id = f"{anchor_id}-match-{match['index']}"
+        match_sections.append(_render_match(match_anchor_id, match))
+    details_html = "".join(match_sections) if match_sections else '<section class="empty">未匹配到任何调用。</section>'
+    return f"""
+    <section id="{escape(anchor_id)}" class="question-group">
+      <h2>{escape(question_group['question'])}</h2>
+      <div class="meta">命中调用数：{question_group['total_matches']}</div>
+      {details_html}
+    </section>
+    """
 
 
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
