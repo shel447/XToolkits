@@ -156,6 +156,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         start_keyword=IR_RESULT_START,
         stop_keyword=IR_RESULT_STOP,
         include_stop=True,
+        include_start=False,
     )
     final_prompt, final_prompt_errors = _extract_final_prompt(lines, request_id)
 
@@ -198,6 +199,7 @@ def _extract_multiline_block(
     start_keyword: str,
     stop_keyword: str,
     include_stop: bool,
+    include_start: bool = True,
 ) -> tuple[str, list[str]]:
     start_index: int | None = None
     for index, line in enumerate(lines):
@@ -213,7 +215,8 @@ def _extract_multiline_block(
     for index in range(start_index, len(lines)):
         line = lines[index]
         if index == start_index:
-            block_lines.append(line)
+            if include_start:
+                block_lines.append(line)
             continue
         if stop_keyword in line:
             if include_stop:

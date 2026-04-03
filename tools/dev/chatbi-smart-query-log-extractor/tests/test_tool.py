@@ -32,13 +32,13 @@ table shop_dim(shop_id, shop_name)
 2026-04-02 19:00:01.770 [INFO] [123456789012345] 生成器任务：{"messages": [{"role": "system", "content": "你是助手\\n请生成IR"}, {"role": "user", "content": "问题：近7天销售额\\n请输出\\\\\\"IR\\\\\\""}]}
 2026-04-02 19:00:01.780 [INFO] [123456789012345] 推理结果
 SELECT amount FROM sales_order
-2026-04-02 19:00:01.790 [INFO] [123456789012345] return result
+return result
 2026-04-02 19:05:01.665 [INFO] [223456789012345] sql_template_match hit query: 近7天销售额是多少
 2026-04-02 19:05:01.710 [INFO] [223456789012345] rewrite question from [old] [new] 帮我查询近7天销售额
 2026-04-02 19:05:01.770 [INFO] [223456789012345] 生成器任务：{"messages": [{"role": "system", "content": "系统提示\\n第二次"}, {"role": "user", "content": "用户问题\\n第二次"}]}
 2026-04-02 19:05:01.780 [INFO] [223456789012345] 推理结果
 SELECT amount FROM sales_order WHERE ds >= current_date - 7
-2026-04-02 19:05:01.790 [INFO] [223456789012345] return result
+return result
 """
 
 PARTIAL_LOG = """2026-04-02 20:00:01.665 [INFO] [323456789012345] sql_template_match hit query: 近7天销售额是多少
@@ -79,6 +79,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(second["final_prompt"]["system"], "系统角色\n路径：\\\\server\\share\\prompt.txt")
         self.assertEqual(second["final_prompt"]["user"], '请输出"门店销售额" IR\n并保留 shop_id')
         self.assertIn("shop_id", second["generated_ir"])
+        self.assertNotIn("推理结果", second["generated_ir"])
 
         second_group = report["questions"][1]
         self.assertEqual(second_group["question"], ALT_QUESTION)
@@ -109,7 +110,9 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(first["final_prompt"]["system"], "你是助手\n请生成IR")
         self.assertEqual(first["final_prompt"]["user"], '问题：近7天销售额\n请输出"IR"')
         self.assertIn("你是助手\n请生成IR", first["final_prompt"]["combined"])
+        self.assertTrue(first["generated_ir"].startswith("SELECT amount FROM sales_order"))
         self.assertIn("return result", first["generated_ir"])
+        self.assertNotIn("推理结果", first["generated_ir"])
         self.assertEqual(first["missing_sections"], [])
         self.assertEqual(first["parse_errors"], [])
 

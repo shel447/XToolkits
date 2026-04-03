@@ -17,7 +17,7 @@ join sales_order.ds = dim_calendar.ds
 select sum(amount) as total_amount
 from sales_order
 where ds >= current_date - interval '7' day
-2026-04-03 09:15:00.110 [INFO] [423456789012345] return result
+return result
 
 2026-04-03 09:16:10.001 [INFO] [523456789012345] sql_template_match hit template=sales_amount_by_shop query: 近7天销售额是多少
 2026-04-03 09:16:10.010 [WARN] [523456789012345] feature flag disabled: irrelevant_switch=false
@@ -34,7 +34,7 @@ filter ds recent_7d
 select shop_id, sum(sales_amount) as total_amount
 from shop_sales_daily
 group by shop_id
-2026-04-03 09:16:10.120 [INFO] [523456789012345] return result
+return result
 
 2026-04-03 09:17:20.001 [INFO] [623456789012345] sql_template_match hit template=broken_case query: 近7天销售额是多少?
 2026-04-03 09:17:20.015 [INFO] [623456789012345] Schema链接完成
