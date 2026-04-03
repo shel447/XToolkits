@@ -13,7 +13,7 @@ from .html_report import render_html
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="提取 ChatBI 智能问数关键日志并生成 HTML/JSON 结果。")
     parser.add_argument("--log", required=True, help="日志文件路径")
-    parser.add_argument("--question", required=True, help="需要精确匹配的问题文本")
+    parser.add_argument("--question", help="可选：只提取该精确问题对应的日志链路；未提供时自动发现全部问题")
     parser.add_argument("--output-dir", default="output", help="输出目录，默认是当前目录下的 output/")
     parser.add_argument("--encoding", help="显式指定日志编码；未指定时自动尝试 UTF-8/GBK")
     parser.add_argument("--json-only", action="store_true", help="仅输出 JSON")
@@ -25,10 +25,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    question = args.question.strip()
-    if not question:
-        print("question 不能为空", file=sys.stderr)
-        return 2
+    question: str | None = None
+    if args.question is not None:
+        question = args.question.strip()
+        if not question:
+            print("question 不能为空", file=sys.stderr)
+            return 2
 
     log_path = Path(args.log)
     if not log_path.is_file():
@@ -45,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"读取日志失败: {exc}", file=sys.stderr)
         return 1
 
-    report = extract_report(log_text, question, str(log_path))
+    report = extract_report(log_text, str(log_path), question_filter=question)
     output_dir = Path(args.output_dir)
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"写出结果失败: {exc}", file=sys.stderr)
         return 1
 
-    if report["total_matches"] == 0:
+    if report["total_questions"] == 0:
         return 3
     if has_partial_failures(report):
         return 4

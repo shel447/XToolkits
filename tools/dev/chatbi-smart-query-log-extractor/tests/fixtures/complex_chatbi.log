@@ -1,5 +1,5 @@
-2026-04-03 09:15:00.001 [INFO] [423456789012345] user_question=近7天销售额是多少 sql_template_matc hit template=sales_amount_daily
-2026-04-03 09:15:00.010 [DEBUG] [999999999999999] user_question=近7天销售额是多少? sql_template_matc hit template=near_miss_should_not_match
+2026-04-03 09:15:00.001 [INFO] [423456789012345] sql_template_match hit template=sales_amount_daily query: 近7天销售额是多少
+2026-04-03 09:15:00.010 [DEBUG] [999999999999999] sql_template_preview hit template=near_miss_should_not_be_discovered query: 近7天销售额是多少?
 2026-04-03 09:15:00.020 [INFO] [423456789012345] knowledge retriever success retrieved docs: doc_sales_amount, doc_calendar
 2026-04-03 09:15:00.021 [INFO] [423456789012345] knowledge retriever success retrieved docs: doc_region_filter
 2026-04-03 09:15:00.030 [INFO] [423456789012345] rewrite question from [origin] [draft] 查询最近7天销售额
@@ -19,7 +19,7 @@ from sales_order
 where ds >= current_date - interval '7' day
 2026-04-03 09:15:00.110 [INFO] [423456789012345] return result
 
-2026-04-03 09:16:10.001 [INFO] [523456789012345] user_question=近7天销售额是多少 sql_template_matc hit template=sales_amount_by_shop
+2026-04-03 09:16:10.001 [INFO] [523456789012345] sql_template_match hit template=sales_amount_by_shop query: 近7天销售额是多少
 2026-04-03 09:16:10.010 [WARN] [523456789012345] feature flag disabled: irrelevant_switch=false
 2026-04-03 09:16:10.020 [INFO] [523456789012345] knowledge retriever success retrieved docs: doc_shop_metric, doc_shop_scope
 2026-04-03 09:16:10.030 [INFO] [523456789012345] rewrite question from [origin] [final] 统计最近七天门店销售额
@@ -36,7 +36,7 @@ from shop_sales_daily
 group by shop_id
 2026-04-03 09:16:10.120 [INFO] [523456789012345] return result
 
-2026-04-03 09:17:20.001 [INFO] [623456789012345] user_question=近7天销售额是多少 sql_template_matc hit template=broken_case
+2026-04-03 09:17:20.001 [INFO] [623456789012345] sql_template_match hit template=broken_case query: 近7天销售额是多少?
 2026-04-03 09:17:20.015 [INFO] [623456789012345] Schema链接完成
 2026-04-03 09:17:20.020 [INFO] [623456789012345] 召回表: temp_sales_debug
 2026-04-03 09:17:20.030 [INFO] [623456789012345] 表定义的IR
