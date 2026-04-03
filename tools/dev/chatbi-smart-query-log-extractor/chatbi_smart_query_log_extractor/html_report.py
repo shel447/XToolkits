@@ -207,6 +207,22 @@ def render_html(report: dict[str, Any]) -> str:
       opacity: 1;
       transform: translateY(0);
     }}
+    .execute-feedback {{
+      min-width: 36px;
+      font-size: 12px;
+      color: var(--accent);
+      opacity: 0;
+      transform: translateY(-2px);
+      transition: opacity 0.16s ease, transform 0.16s ease;
+      pointer-events: none;
+    }}
+    .execute-feedback.visible {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
+    .execute-output {{
+      margin-top: 12px;
+    }}
     pre {{
       margin: 0;
       padding: 14px;
@@ -303,6 +319,53 @@ def render_html(report: dict[str, Any]) -> str:
       }}
     }}
 
+    async function executePrompt(button) {{
+      const requestId = button.getAttribute('data-execute-request-id');
+      const outputId = button.getAttribute('data-execute-output');
+      const output = outputId ? document.getElementById(outputId) : null;
+      const feedback = button.parentElement ? button.parentElement.querySelector('.execute-feedback') : null;
+      if (!requestId || !output) {{
+        return;
+      }}
+      output.hidden = false;
+      output.textContent = '执行中...';
+      try {{
+        const response = await fetch('./api/execute-prompt', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{ request_id: requestId }}),
+        }});
+        const payload = await response.json();
+        if (!response.ok) {{
+          throw new Error(payload.error || `HTTP ${{response.status}}`);
+        }}
+        const content = payload?.choices?.[0]?.message?.content;
+        output.textContent = typeof content === 'string' ? content : JSON.stringify(payload, null, 2);
+        if (feedback) {{
+          feedback.textContent = '已执行';
+          feedback.classList.add('visible');
+          if (feedback._timer) {{
+            clearTimeout(feedback._timer);
+          }}
+          feedback._timer = setTimeout(() => {{
+            feedback.classList.remove('visible');
+          }}, 1200);
+        }}
+      }} catch (error) {{
+        output.textContent = `执行失败: ${{error.message}}`;
+        if (feedback) {{
+          feedback.textContent = '执行失败';
+          feedback.classList.add('visible');
+          if (feedback._timer) {{
+            clearTimeout(feedback._timer);
+          }}
+          feedback._timer = setTimeout(() => {{
+            feedback.classList.remove('visible');
+          }}, 1200);
+        }}
+      }}
+    }}
+
     function executeIR(button) {{
       button.setAttribute('title', '待接入');
     }}
@@ -334,10 +397,12 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         _render_text_section("问题改写", match["rewritten_question"]),
         _render_list_section("表检索结果", match["recalled_tables"]),
         _render_collapsible_text_section("IR 表定义", match["ir_table_definition"]),
-        _render_collapsible_copyable_text_section(
+        _render_collapsible_prompt_execution_section(
             "最终 Prompt",
             match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
             f"final-prompt-{anchor_id}",
+            request_id=match["request_id"],
+            executable=bool(match["final_prompt"].get("system") and match["final_prompt"].get("user")),
         ),
         _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
         _render_copyable_text_section(
@@ -442,6 +507,43 @@ def _render_collapsible_copyable_text_section(title: str, content: str, target_i
           </div>
         </div>
         <pre id="{escape(target_id)}">{escape(content)}</pre>
+      </div>
+    </details>
+    """
+
+
+def _render_collapsible_prompt_execution_section(
+    title: str,
+    content: str,
+    target_id: str,
+    request_id: str,
+    executable: bool,
+) -> str:
+    if not content:
+        return _render_text_section(title, content)
+    execute_controls = ""
+    if executable:
+        execute_controls = (
+            f'<button type="button" class="execute-btn" '
+            f'data-execute-request-id="{escape(request_id)}" '
+            f'data-execute-output="{escape(target_id)}-result" '
+            f'onclick="executePrompt(this)" title="执行">▶</button>'
+            f'<span class="execute-feedback" aria-live="polite">已执行</span>'
+        )
+    return f"""
+    <details class="section collapsible">
+      <summary>{escape(title)}</summary>
+      <div class="collapsible-body">
+        <div class="section-header">
+          <div></div>
+          <div class="copy-actions">
+            {execute_controls}
+            <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
+            <span class="copy-feedback" aria-live="polite">已复制</span>
+          </div>
+        </div>
+        <pre id="{escape(target_id)}">{escape(content)}</pre>
+        <pre id="{escape(target_id)}-result" class="execute-output" hidden></pre>
       </div>
     </details>
     """

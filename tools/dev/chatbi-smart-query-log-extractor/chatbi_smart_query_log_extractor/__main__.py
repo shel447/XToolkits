@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .extractor import extract_report, has_partial_failures, read_log_text
 from .html_report import render_html
+from .interactive_server import serve_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,6 +19,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--encoding", help="显式指定日志编码；未指定时自动尝试 UTF-8/GBK")
     parser.add_argument("--json-only", action="store_true", help="仅输出 JSON")
     parser.add_argument("--html-only", action="store_true", help="仅输出 HTML")
+    parser.add_argument("--serve", action="store_true", help="生成结果后启动本地交互服务，支持在页面上执行 Prompt")
+    parser.add_argument("--host", default="127.0.0.1", help="本地交互服务监听地址，默认 127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000, help="本地交互服务监听端口，默认 8000")
     return parser
 
 
@@ -40,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.json_only and args.html_only:
         print("--json-only 与 --html-only 不能同时使用", file=sys.stderr)
         return 2
+    if args.port < 0 or args.port > 65535:
+        print("--port 必须在 0 到 65535 之间", file=sys.stderr)
+        return 2
 
     try:
         log_text = read_log_text(log_path, args.encoding)
@@ -48,14 +55,27 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     report = extract_report(log_text, str(log_path), question_filter=question)
+    html_content = render_html(report)
     output_dir = Path(args.output_dir)
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
-        _write_outputs(report, output_dir, args.json_only, args.html_only)
+        _write_outputs(report, html_content, output_dir, args.json_only, args.html_only)
     except OSError as exc:
         print(f"写出结果失败: {exc}", file=sys.stderr)
         return 1
 
+    exit_code = _resolve_exit_code(report)
+    if args.serve:
+        try:
+            serve_report(report, html_content, host=args.host, port=args.port)
+        except KeyboardInterrupt:
+            print("\n交互服务已停止", file=sys.stderr)
+        return exit_code
+
+    return exit_code
+
+
+def _resolve_exit_code(report: dict) -> int:
     if report["total_questions"] == 0:
         return 3
     if has_partial_failures(report):
@@ -63,7 +83,13 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _write_outputs(report: dict, output_dir: Path, json_only: bool, html_only: bool) -> None:
+def _write_outputs(
+    report: dict,
+    html_content: str,
+    output_dir: Path,
+    json_only: bool,
+    html_only: bool,
+) -> None:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     base_name = f"{timestamp}-chatbi-log-extract"
 
@@ -73,7 +99,7 @@ def _write_outputs(report: dict, output_dir: Path, json_only: bool, html_only: b
 
     if not json_only:
         html_path = output_dir / f"{base_name}.html"
-        html_path.write_text(render_html(report), encoding="utf-8")
+        html_path.write_text(html_content, encoding="utf-8")
 
 
 if __name__ == "__main__":

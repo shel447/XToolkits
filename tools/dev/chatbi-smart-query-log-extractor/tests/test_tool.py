@@ -2,9 +2,12 @@ import json
 import shutil
 import subprocess
 import sys
+import threading
 import unittest
 import uuid
 from pathlib import Path
+
+import requests
 
 
 TOOL_ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +19,7 @@ if str(TOOL_ROOT) not in sys.path:
 from chatbi_smart_query_log_extractor.__main__ import main
 from chatbi_smart_query_log_extractor.extractor import extract_report
 from chatbi_smart_query_log_extractor.html_report import render_html
+from chatbi_smart_query_log_extractor.interactive_server import build_report_server
 
 
 QUESTION = "近7天销售额是多少"
@@ -197,6 +201,9 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn("Prompt / system", html)
         self.assertNotIn("Prompt / user", html)
         self.assertNotIn("Prompt / combined", html)
+        self.assertIn('data-execute-request-id="423456789012345"', html)
+        self.assertIn('data-execute-output="final-prompt-question-1-match-1-result"', html)
+        self.assertIn("executePrompt(this)", html)
         self.assertIn('class="copy-btn"', html)
         self.assertIn('class="copy-feedback"', html)
         self.assertIn('aria-live="polite"', html)
@@ -212,6 +219,31 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn('<details class="section collapsible" open>', html)
         self.assertIn("完整 IR", html)
         self.assertIn("未命中该字段", html)
+
+    def test_execute_prompt_endpoint_uses_original_two_message_payload(self) -> None:
+        report = extract_report(FULL_LOG, "sample.log", question_filter=QUESTION)
+        server = build_report_server(report, render_html(report), host="127.0.0.1", port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            response = requests.post(
+                f"{server.base_url}/api/execute-prompt",
+                json={"request_id": "123456789012345"},
+                timeout=5,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["object"], "chat.completion")
+            content = payload["choices"][0]["message"]["content"]
+            self.assertIn("FAKE RESPONSE", content)
+            self.assertIn("你是助手", content)
+            self.assertIn("问题：近7天销售额", content)
+            self.assertNotIn("生成器任务", content)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
 
 
 class CliTests(unittest.TestCase):

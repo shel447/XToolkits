@@ -14,7 +14,8 @@ runtime: python
 entrypoint: python -m chatbi_smart_query_log_extractor
 created_at: 2026-04-03
 last_verified_at: 2026-04-04
-dependencies: []
+dependencies:
+  - requests
 artifacts:
   - "*.json"
   - "*.html"
@@ -39,6 +40,15 @@ interface:
     - name: html-only
       required: false
       description: Generate only the HTML result.
+    - name: serve
+      required: false
+      description: Start a local interactive report server so the HTML page can execute the extracted final prompt.
+    - name: host
+      required: false
+      description: Host address for the local interactive report server. Default is 127.0.0.1.
+    - name: port
+      required: false
+      description: Port for the local interactive report server. Default is 8000. Use 0 to auto-assign a free port.
   input:
     kind: file
     format: text log
@@ -63,8 +73,11 @@ interface:
   side_effects:
     - creates output directories
     - writes JSON and HTML report files
+    - can start a local HTTP server and call a fake /chat/completion endpoint with requests verify=False
   examples:
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output
       description: Auto-discover all unique questions from the log and generate grouped JSON and HTML outputs.
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --question "近7天销售额是多少" --output-dir .\output
       description: Extract only one exact question group from the discovered questions and generate both output formats.
+    - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output --serve
+      description: Generate files, start a local report server, and enable the Final Prompt execute button in the HTML page.
