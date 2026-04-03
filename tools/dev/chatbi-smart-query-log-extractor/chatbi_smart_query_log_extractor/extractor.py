@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 from datetime import datetime
 from pathlib import Path
@@ -259,9 +260,7 @@ def _extract_final_prompt(lines: list[str], request_id: str) -> tuple[dict[str, 
 
     errors: list[str] = []
     try:
-        payload = json.loads(raw_payload)
-        if isinstance(payload, str):
-            payload = json.loads(payload)
+        payload = _load_prompt_payload(raw_payload)
         messages = payload.get("messages") if isinstance(payload, dict) else None
         if not isinstance(messages, list) or len(messages) < 2:
             raise ValueError("messages field missing or incomplete")
@@ -284,6 +283,32 @@ def _normalize_prompt_content(value: Any) -> str:
     normalized = normalized.replace('\\"', '"')
     normalized = normalized.replace("\\'", "'")
     return normalized
+
+
+def _load_prompt_payload(raw_payload: str) -> Any:
+    current: Any = raw_payload
+    last_error: Exception | None = None
+    for _ in range(3):
+        if isinstance(current, dict):
+            return current
+        if not isinstance(current, str):
+            break
+        text = current.strip()
+        if not text:
+            break
+        for loader in (json.loads, ast.literal_eval):
+            try:
+                current = loader(text)
+                break
+            except (json.JSONDecodeError, SyntaxError, ValueError) as exc:
+                last_error = exc
+        else:
+            break
+    if isinstance(current, dict):
+        return current
+    if last_error is not None:
+        raise ValueError(str(last_error))
+    raise ValueError("payload is not a dict-like object")
 
 
 def _extract_after_prompt_keyword(line: str) -> str:
@@ -318,9 +343,8 @@ def _build_complete_ir(
     if anchor_index is None:
         return "", ["complete_ir: missing '@dataclass' insertion anchor"]
 
-    before_anchor = "\n".join(generated_lines[:anchor_index]).strip()
     after_anchor = "\n".join(generated_lines[anchor_index:]).strip()
-    sections = [section for section in (before_anchor, ir_table_definition.strip(), after_anchor) if section]
+    sections = [section for section in (ir_table_definition.strip(), after_anchor) if section]
     return "\n\n".join(sections).strip(), []
 
 
