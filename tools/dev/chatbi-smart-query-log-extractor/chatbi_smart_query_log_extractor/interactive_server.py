@@ -4,10 +4,13 @@ import json
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import requests
+
+from .ir_executor import ExecutorConfigError, IRExecutionRequestError, execute_complete_ir
 
 
 class ReportServer(ThreadingHTTPServer):
@@ -16,10 +19,12 @@ class ReportServer(ThreadingHTTPServer):
         server_address: tuple[str, int],
         report: dict[str, Any],
         html_content: str,
+        config_path: str | Path | None = None,
     ) -> None:
         super().__init__(server_address, ReportRequestHandler)
         self.report = report
         self.html_content = html_content
+        self.config_path = Path(config_path).resolve() if config_path is not None else None
         host, port = self.server_address
         display_host = "127.0.0.1" if host in {"0.0.0.0", ""} else host
         self.base_url = f"http://{display_host}:{port}"
@@ -42,6 +47,9 @@ class ReportRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/execute-prompt":
             self._handle_execute_prompt()
+            return
+        if parsed.path == "/api/execute-ir":
+            self._handle_execute_ir()
             return
         if parsed.path == "/chat/completion":
             self._handle_fake_chat_completion()
@@ -108,6 +116,44 @@ class ReportRequestHandler(BaseHTTPRequestHandler):
         }
         self._send_json(HTTPStatus.OK, response)
 
+    def _handle_execute_ir(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid json body"})
+            return
+
+        request_id = str(payload.get("request_id", "")).strip()
+        if not request_id:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request_id is required"})
+            return
+
+        executor_name = payload.get("executor")
+        if executor_name is not None and not isinstance(executor_name, str):
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "executor must be a string"})
+            return
+
+        source_filename = payload.get("source_filename")
+        if source_filename is not None and not isinstance(source_filename, str):
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "source_filename must be a string"})
+            return
+
+        try:
+            result = execute_complete_ir(
+                self.server.report,
+                request_id=request_id,
+                executor_name=executor_name,
+                source_filename=source_filename,
+                config_path=self.server.config_path,
+            )
+        except IRExecutionRequestError as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        except ExecutorConfigError as exc:
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+            return
+
+        self._send_json(HTTPStatus.OK, result)
+
     def _read_json_body(self) -> dict[str, Any] | None:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length > 0 else b"{}"
@@ -139,8 +185,9 @@ def build_report_server(
     html_content: str,
     host: str = "127.0.0.1",
     port: int = 8000,
+    config_path: str | Path | None = None,
 ) -> ReportServer:
-    return ReportServer((host, port), report=report, html_content=html_content)
+    return ReportServer((host, port), report=report, html_content=html_content, config_path=config_path)
 
 
 def serve_report(
@@ -148,8 +195,9 @@ def serve_report(
     html_content: str,
     host: str = "127.0.0.1",
     port: int = 8000,
+    config_path: str | Path | None = None,
 ) -> None:
-    server = build_report_server(report, html_content, host=host, port=port)
+    server = build_report_server(report, html_content, host=host, port=port, config_path=config_path)
     try:
         print(f"Interactive report server started: {server.base_url}")
         server.serve_forever()

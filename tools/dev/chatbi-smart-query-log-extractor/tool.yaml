@@ -13,9 +13,10 @@ tags:
 runtime: python
 entrypoint: python -m chatbi_smart_query_log_extractor
 created_at: 2026-04-03
-last_verified_at: 2026-04-04
+last_verified_at: 2026-04-07
 dependencies:
   - requests
+  - pyyaml
 artifacts:
   - "*.json"
   - "*.html"
@@ -64,6 +65,7 @@ interface:
       - final_prompt
       - generated_ir
       - complete_ir
+      - complete_ir_execution
   exit_codes:
     0: success with at least one fully parsed match
     1: runtime failure while reading or writing files
@@ -74,6 +76,7 @@ interface:
     - creates output directories
     - writes JSON and HTML report files
     - can start a local HTTP server and call a fake /chat/completion endpoint with requests verify=False
+    - can write complete_ir into a configured target project directory and execute it via a local command
   examples:
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output
       description: Auto-discover all unique questions from the log and generate grouped JSON and HTML outputs.
@@ -81,3 +84,8 @@ interface:
       description: Extract only one exact question group from the discovered questions and generate both output formats.
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output --serve
       description: Generate files, start a local report server, and enable the Final Prompt execute button in the HTML page.
+local_config:
+  files:
+    - executors.example.yaml
+    - executors.local.yaml
+  description: Copy the example file to executors.local.yaml and fill in local executor paths for complete_ir execution.

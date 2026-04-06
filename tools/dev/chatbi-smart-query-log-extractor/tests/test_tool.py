@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -67,6 +68,63 @@ LIST_PROMPT_LOG = """2026-04-02 21:00:01.665 [INFO] [423456789012346] sql_templa
 class ListPromptIR:
 tables = get_tables_columns(table_exprs)
 """
+
+
+def _build_ir_only_report(complete_ir: str, request_id: str = "823456789012345") -> dict:
+    return {
+        "tool": "chatbi-smart-query-log-extractor",
+        "version": "test",
+        "source_log": "test.log",
+        "generated_at": "2026-04-07T00:00:00",
+        "total_questions": 1,
+        "questions": [
+            {
+                "question": QUESTION,
+                "total_matches": 1,
+                "matches": [
+                    {
+                        "index": 1,
+                        "request_id": request_id,
+                        "anchor_timestamp": "2026-04-07 00:00:00.000",
+                        "anchor_line": "anchor",
+                        "line_number": 1,
+                        "rag_results": [],
+                        "rewritten_question": "",
+                        "recalled_tables": [],
+                        "ir_table_definition": "",
+                        "final_prompt": {"raw": "", "system": "", "user": "", "combined": ""},
+                        "generated_ir": "",
+                        "complete_ir": complete_ir,
+                        "missing_sections": [],
+                        "parse_errors": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _write_executor_config(config_path: Path, workspace: Path, python_bin: str | None = None) -> None:
+    python_path = python_bin or sys.executable
+    config_path.write_text(
+        "\n".join(
+            [
+                "default_executor: demo",
+                "executors:",
+                "  demo:",
+                f"    project_root: {workspace.as_posix()}",
+                f"    working_dir: {workspace.as_posix()}",
+                f"    target_dir: {(workspace / 'generated').as_posix()}",
+                f"    python_bin: {Path(python_path).as_posix()}",
+                "    run_command:",
+                "      - '{python_bin}'",
+                "      - '{target_file}'",
+                "    timeout_sec: 5",
+                "    result_encoding: utf-8",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 class ExtractorTests(unittest.TestCase):
@@ -210,8 +268,12 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("已复制", html)
         self.assertIn('data-copy-target="final-prompt-question-1-match-1"', html)
         self.assertIn('data-copy-target="complete-ir-question-1-match-1"', html)
+        self.assertIn('id="complete-ir-question-1-match-1-filename"', html)
+        self.assertIn('placeholder="case_时间戳.py"', html)
         self.assertIn('class="execute-btn"', html)
-        self.assertIn('data-execute-target="complete-ir-question-1-match-1"', html)
+        self.assertIn('data-execute-request-id="423456789012345"', html)
+        self.assertIn('data-execute-output="complete-ir-question-1-match-1-result"', html)
+        self.assertIn('data-execute-filename-input="complete-ir-question-1-match-1-filename"', html)
         self.assertIn(">▶</button>", html)
         self.assertIn("executeIR(this)", html)
         self.assertIn("feedback.classList.add('visible')", html)
@@ -244,6 +306,173 @@ class ExtractorTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+
+    def test_execute_ir_endpoint_writes_enhanced_source_and_returns_stdout(self) -> None:
+        TMP_ROOT.mkdir(exist_ok=True)
+        temp_dir = TMP_ROOT / f"ir-run-{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            config_path = temp_dir / "executors.local.yaml"
+            _write_executor_config(config_path, temp_dir)
+            report = _build_ir_only_report(
+                "\n".join(
+                    [
+                        "def to_sql(intent_result):",
+                        "    return f'SQL::{intent_result}'",
+                        "",
+                        "intent_result = 'ok'",
+                        "resulted_sql = to_sql(intent_result)",
+                    ]
+                ),
+                request_id="823456789012345",
+            )
+            server = build_report_server(
+                report,
+                "html",
+                host="127.0.0.1",
+                port=0,
+                config_path=config_path,
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                response = requests.post(
+                    f"{server.base_url}/api/execute-ir",
+                    json={"request_id": "823456789012345", "source_filename": "demo_case"},
+                    timeout=5,
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertTrue(payload["success"])
+                self.assertEqual(payload["exit_code"], 0)
+                self.assertEqual(payload["executor"], "demo")
+                self.assertIn("SQL::ok", payload["stdout"])
+                self.assertEqual(payload["stderr"], "")
+                self.assertTrue(payload["target_file"].endswith("demo_case.py"))
+                target_path = Path(payload["target_file"])
+                self.assertTrue(target_path.is_file())
+                enhanced = target_path.read_text(encoding="utf-8")
+                self.assertIn("resulted_sql = to_sql(intent_result)\nprint(resulted_sql)", enhanced)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_execute_ir_endpoint_generates_default_case_filename(self) -> None:
+        TMP_ROOT.mkdir(exist_ok=True)
+        temp_dir = TMP_ROOT / f"default-ir-run-{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            config_path = temp_dir / "executors.local.yaml"
+            _write_executor_config(config_path, temp_dir)
+            report = _build_ir_only_report(
+                "\n".join(
+                    [
+                        "def to_sql(intent_result):",
+                        "    return intent_result",
+                        "",
+                        "intent_result = 'ok'",
+                        "resulted_sql = to_sql(intent_result)",
+                    ]
+                ),
+                request_id="923456789012345",
+            )
+            server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                response = requests.post(
+                    f"{server.base_url}/api/execute-ir",
+                    json={"request_id": "923456789012345"},
+                    timeout=5,
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertRegex(Path(payload["target_file"]).name, r"^case_\d{17}\.py$")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_execute_ir_endpoint_rejects_invalid_filename(self) -> None:
+        TMP_ROOT.mkdir(exist_ok=True)
+        temp_dir = TMP_ROOT / f"bad-name-ir-run-{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            config_path = temp_dir / "executors.local.yaml"
+            _write_executor_config(config_path, temp_dir)
+            report = _build_ir_only_report("resulted_sql = to_sql(intent_result)")
+            server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                response = requests.post(
+                    f"{server.base_url}/api/execute-ir",
+                    json={"request_id": "823456789012345", "source_filename": "..\\bad.py"},
+                    timeout=5,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("source_filename", response.json()["error"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_execute_ir_endpoint_reports_missing_config(self) -> None:
+        report = _build_ir_only_report("resulted_sql = to_sql(intent_result)")
+        server = build_report_server(
+            report,
+            "html",
+            host="127.0.0.1",
+            port=0,
+            config_path=TMP_ROOT / "missing-executors.local.yaml",
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            response = requests.post(
+                f"{server.base_url}/api/execute-ir",
+                json={"request_id": "823456789012345"},
+                timeout=5,
+            )
+            self.assertEqual(response.status_code, 500)
+            self.assertIn("executors.local.yaml", response.json()["error"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def test_execute_ir_endpoint_rejects_missing_sql_anchor(self) -> None:
+        TMP_ROOT.mkdir(exist_ok=True)
+        temp_dir = TMP_ROOT / f"missing-anchor-ir-run-{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            config_path = temp_dir / "executors.local.yaml"
+            _write_executor_config(config_path, temp_dir)
+            report = _build_ir_only_report("print('no sql anchor')", request_id="723456789012345")
+            server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                response = requests.post(
+                    f"{server.base_url}/api/execute-ir",
+                    json={"request_id": "723456789012345"},
+                    timeout=5,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("resulted_sql = to_sql(intent_result)", response.json()["error"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 class CliTests(unittest.TestCase):

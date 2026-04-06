@@ -1,0 +1,12 @@
+default_executor: demo
+executors:
+  demo:
+    project_root: E:/code/codex_projects/your-target-project
+    working_dir: E:/code/codex_projects/your-target-project
+    target_dir: E:/code/codex_projects/your-target-project/tmp/generated_ir
+    python_bin: E:/code/codex_projects/your-target-project/.venv/Scripts/python.exe
+    run_command:
+      - "{python_bin}"
+      - "{target_file}"
+    timeout_sec: 60
+    result_encoding: utf-8

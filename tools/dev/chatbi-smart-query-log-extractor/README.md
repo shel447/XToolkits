@@ -14,6 +14,8 @@
 
 - Python 3.10+
 - 可读取的纯文本日志文件
+- `requests`
+- `PyYAML`
 
 ## Usage
 
@@ -36,7 +38,7 @@ python -m chatbi_smart_query_log_extractor --log <log-file> [--question "<exact 
 ## Outputs
 
 - `*.json`: 顶层按问题分组的结构化提取结果，调用级结果包含 `ir_table_definition`、`generated_ir`、`complete_ir`
-- `*.html`: 先按问题分组、再按调用 ID 分块的排障页面；`RAG 检索结果`、`IR 表定义`、`最终 Prompt`、`生成 IR 结果` 默认折叠，按需展开查看；`最终 Prompt` 只展示合并后的内容并支持复制、执行，执行时仍按原始两条 `message` 一起调用；`完整 IR` 右上角提供复制按钮和执行占位按钮，复制后会给一个小的“已复制”反馈
+- `*.html`: 先按问题分组、再按调用 ID 分块的排障页面；`RAG 检索结果`、`IR 表定义`、`最终 Prompt`、`生成 IR 结果` 默认折叠，按需展开查看；`最终 Prompt` 只展示合并后的内容并支持复制、执行，执行时仍按原始两条 `message` 一起调用；`完整 IR` 右上角提供复制按钮、文件名输入框和执行按钮，复制后会给一个小的“已复制”反馈
 
 ## Examples
 
@@ -58,11 +60,54 @@ python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\out
 
 该命令会在写出结果后启动本地交互服务，浏览器打开 `http://127.0.0.1:8000/` 后，可以在页面里点击“最终 Prompt”的执行按钮。当前 `/chat/completion` 先用本地假的接口模拟，后续可直接替换成真实模型服务。
 
+## Local Executor Config
+
+- 复制 [executors.example.yaml](E:\code\codex_projects\XToolkits\tools\dev\chatbi-smart-query-log-extractor\executors.example.yaml) 为同目录下的 `executors.local.yaml`
+- `executors.local.yaml` 不纳入版本控制，专门保存本机的项目路径、解释器路径和执行命令
+- `run_command` 支持这些占位符：
+  - `{python_bin}`
+  - `{target_file}`
+  - `{project_root}`
+  - `{working_dir}`
+  - `{target_dir}`
+
+示例：
+
+```yaml
+default_executor: demo
+executors:
+  demo:
+    project_root: E:/code/codex_projects/your-target-project
+    working_dir: E:/code/codex_projects/your-target-project
+    target_dir: E:/code/codex_projects/your-target-project/tmp/generated_ir
+    python_bin: E:/code/codex_projects/your-target-project/.venv/Scripts/python.exe
+    run_command:
+      - "{python_bin}"
+      - "{target_file}"
+    timeout_sec: 60
+    result_encoding: utf-8
+```
+
+页面执行“完整 IR”时，工具会把 `complete_ir` 写到 `target_dir/<源文件名>`。如果你没有输入文件名，会自动生成 `case_<紧凑时间戳>.py`。执行前会动态把：
+
+```python
+print(resulted_sql)
+```
+
+插入到：
+
+```python
+resulted_sql = to_sql(intent_result)
+```
+
+下一行，用于把 SQL 结果回收到标准输出。
+
 ## Side Effects
 
 - 创建输出目录
 - 写出 JSON 与 HTML 文件
 - 使用 `requests` 调用本地假的 `/chat/completion` 接口，当前关闭 SSL 校验 `verify=False`
+- 在本地配置存在时，可把 `complete_ir` 写入目标项目目录并执行，再把 `stdout/stderr` 回显到页面
 
 ## Limitations
 
@@ -73,6 +118,7 @@ python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\out
 - `IR 表定义` 从 `表定义的IR：` 之后开始提取，不保留关键词前缀
 - `生成 IR 结果` 从 `最终的IR` 之后开始提取，到 `tables = get_tables_columns(table_exprs)` 为止，并保留结束行
 - `完整 IR` 不是直接从日志中提取，而是把 `IR 表定义` 插入 `生成 IR 结果` 中 `@dataclass` 行之前，插入块前后各保留一个空行；`@dataclass` 之前的生成前导内容不会保留到 `complete_ir`
+- 执行“完整 IR”时，必须在源码中唯一命中 `resulted_sql = to_sql(intent_result)`；否则接口会拒绝执行
 
 ## Status
 

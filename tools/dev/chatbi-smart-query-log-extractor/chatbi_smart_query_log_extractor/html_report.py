@@ -166,6 +166,20 @@ def render_html(report: dict[str, Any]) -> str:
       align-items: center;
       gap: 8px;
     }}
+    .filename-input {{
+      width: 180px;
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 28px;
+    }}
+    .filename-input::placeholder {{
+      color: #8a97aa;
+    }}
     .copy-btn {{
       width: 28px;
       height: 28px;
@@ -366,8 +380,66 @@ def render_html(report: dict[str, Any]) -> str:
       }}
     }}
 
-    function executeIR(button) {{
-      button.setAttribute('title', '待接入');
+    function setTransientFeedback(feedback, text) {{
+      if (!feedback) {{
+        return;
+      }}
+      feedback.textContent = text;
+      feedback.classList.add('visible');
+      if (feedback._timer) {{
+        clearTimeout(feedback._timer);
+      }}
+      feedback._timer = setTimeout(() => {{
+        feedback.classList.remove('visible');
+      }}, 1200);
+    }}
+
+    function formatExecutionResult(payload) {{
+      return [
+        payload.success ? '执行成功' : '执行失败',
+        `执行器: ${{payload.executor || '-'}}`,
+        `目标文件: ${{payload.target_file || '-'}}`,
+        `耗时: ${{payload.duration_ms ?? '-'}} ms`,
+        '',
+        'STDOUT:',
+        payload.stdout || '(empty)',
+        '',
+        'STDERR:',
+        payload.stderr || '(empty)',
+      ].join('\\n');
+    }}
+
+    async function executeIR(button) {{
+      const requestId = button.getAttribute('data-execute-request-id');
+      const outputId = button.getAttribute('data-execute-output');
+      const filenameInputId = button.getAttribute('data-execute-filename-input');
+      const output = outputId ? document.getElementById(outputId) : null;
+      const filenameInput = filenameInputId ? document.getElementById(filenameInputId) : null;
+      const feedback = button.parentElement ? button.parentElement.querySelector('.execute-feedback') : null;
+      if (!requestId || !output) {{
+        return;
+      }}
+      output.hidden = false;
+      output.textContent = '执行中...';
+      try {{
+        const response = await fetch('./api/execute-ir', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            request_id: requestId,
+            source_filename: filenameInput ? filenameInput.value.trim() : '',
+          }}),
+        }});
+        const payload = await response.json();
+        if (!response.ok) {{
+          throw new Error(payload.error || `HTTP ${{response.status}}`);
+        }}
+        output.textContent = formatExecutionResult(payload);
+        setTransientFeedback(feedback, payload.success ? '已执行' : '执行失败');
+      }} catch (error) {{
+        output.textContent = `执行失败: ${{error.message}}`;
+        setTransientFeedback(feedback, '执行失败');
+      }}
     }}
   </script>
 </body>
@@ -410,6 +482,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             match["complete_ir"],
             f"complete-ir-{anchor_id}",
             show_execute=True,
+            request_id=match["request_id"],
         ),
     ]
 
@@ -467,15 +540,21 @@ def _render_copyable_text_section(
     content: str,
     target_id: str,
     show_execute: bool = False,
+    request_id: str | None = None,
 ) -> str:
     if not content:
         return _render_text_section(title, content)
     execute_button = ""
     if show_execute:
         execute_button = (
+            f'<input id="{escape(target_id)}-filename" class="filename-input" type="text" '
+            f'placeholder="case_时间戳.py" title="源文件名" />'
             f'<button type="button" class="execute-btn" '
-            f'data-execute-target="{escape(target_id)}" '
+            f'data-execute-request-id="{escape(request_id or "")}" '
+            f'data-execute-output="{escape(target_id)}-result" '
+            f'data-execute-filename-input="{escape(target_id)}-filename" '
             f'onclick="executeIR(this)" title="执行">▶</button>'
+            f'<span class="execute-feedback" aria-live="polite">已执行</span>'
         )
     return f"""
     <section class="section">
@@ -488,6 +567,7 @@ def _render_copyable_text_section(
         </div>
       </div>
       <pre id="{escape(target_id)}">{escape(content)}</pre>
+      <pre id="{escape(target_id)}-result" class="execute-output" hidden></pre>
     </section>
     """
 
