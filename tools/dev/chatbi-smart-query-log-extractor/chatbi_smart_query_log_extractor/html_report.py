@@ -97,11 +97,32 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--accent);
       text-decoration: none;
     }}
+    .nav > ul > li > a {{
+      display: block;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+    }}
+    .nav a.nav-active {{
+      background: #e8f5f2;
+      border-color: #9ad8cb;
+      color: var(--accent);
+      font-weight: 700;
+    }}
+    .nav a.nav-parent-active {{
+      background: #eef6ff;
+      border-color: #c8daf6;
+      color: #24548f;
+    }}
     .nav-match-link {{
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 4px 0;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
     }}
     .nav-status {{
       position: relative;
@@ -549,6 +570,39 @@ def render_html(report: dict[str, Any]) -> str:
         setTransientFeedback(feedback, '执行失败');
       }}
     }}
+
+    function updateActiveNavLinks() {{
+      const nav = document.querySelector('.nav');
+      if (!nav) {{
+        return;
+      }}
+      const links = Array.from(nav.querySelectorAll('a[href^="#"]'));
+      links.forEach((link) => {{
+        link.classList.remove('nav-active');
+        link.classList.remove('nav-parent-active');
+      }});
+      const hash = window.location.hash;
+      if (!hash) {{
+        return;
+      }}
+      const activeLink = links.find((link) => link.getAttribute('href') === hash);
+      if (!activeLink) {{
+        return;
+      }}
+      activeLink.classList.add('nav-active');
+      const parentList = activeLink.closest('ul');
+      const parentItem = parentList ? parentList.closest('li') : null;
+      if (!parentItem) {{
+        return;
+      }}
+      const parentQuestionLink = parentItem.firstElementChild;
+      if (parentQuestionLink instanceof HTMLAnchorElement && parentQuestionLink !== activeLink) {{
+        parentQuestionLink.classList.add('nav-parent-active');
+      }}
+    }}
+
+    window.addEventListener('hashchange', updateActiveNavLinks);
+    window.addEventListener('DOMContentLoaded', updateActiveNavLinks);
   </script>
 </body>
 </html>"""
