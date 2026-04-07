@@ -30,14 +30,17 @@ class IRExecutionRequestError(RuntimeError):
 
 def execute_complete_ir(
     report: dict[str, Any],
-    request_id: str,
+    match_id: str,
     executor_name: str | None = None,
     source_filename: str | None = None,
     config_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    complete_ir = _find_complete_ir(report, request_id)
+    match = _find_match(report, match_id)
+    complete_ir = match.get("complete_ir", "") if match is not None else ""
     if not complete_ir:
-        raise IRExecutionRequestError(f"complete_ir not found for request_id: {request_id}")
+        raise IRExecutionRequestError(f"complete_ir not found for match_id: {match_id}")
+
+    thread_id = str(match.get("thread_id", "")) if match is not None else ""
 
     config = _load_executors_config(config_path)
     executor_id, executor = _resolve_executor_config(config, executor_name)
@@ -80,7 +83,8 @@ def execute_complete_ir(
     except subprocess.TimeoutExpired as exc:
         duration_ms = int((time.perf_counter() - start) * 1000)
         return {
-            "request_id": request_id,
+            "match_id": match_id,
+            "thread_id": thread_id,
             "executor": executor_id,
             "success": False,
             "exit_code": -1,
@@ -94,7 +98,8 @@ def execute_complete_ir(
     stdout = _decode_output(completed.stdout, result_encoding)
     stderr = _decode_output(completed.stderr, result_encoding)
     return {
-        "request_id": request_id,
+        "match_id": match_id,
+        "thread_id": thread_id,
         "executor": executor_id,
         "success": completed.returncode == 0,
         "exit_code": completed.returncode,
@@ -105,13 +110,12 @@ def execute_complete_ir(
     }
 
 
-def _find_complete_ir(report: dict[str, Any], request_id: str) -> str:
+def _find_match(report: dict[str, Any], match_id: str) -> dict[str, Any] | None:
     for question_group in report.get("questions", []):
         for match in question_group.get("matches", []):
-            if match.get("request_id") == request_id:
-                complete_ir = match.get("complete_ir", "")
-                return complete_ir if isinstance(complete_ir, str) else ""
-    return ""
+            if match.get("match_id") == match_id:
+                return match
+    return None
 
 
 def _load_executors_config(config_path: str | Path | None) -> dict[str, Any]:

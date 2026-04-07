@@ -19,7 +19,7 @@ def render_html(report: dict[str, Any]) -> str:
         match_nav_items = []
         for match in question_group["matches"]:
             anchor_id = f"{question_anchor_id}-match-{match['index']}"
-            nav_label = f"{match['anchor_timestamp']} | {match['request_id']}"
+            nav_label = match["anchor_timestamp"]
             match_nav_items.append(f'<li><a href="#{anchor_id}">{escape(nav_label)}</a></li>')
         nested_nav = f"<ul>{''.join(match_nav_items)}</ul>" if match_nav_items else ""
         nav_items.append(
@@ -350,11 +350,11 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     async function executePrompt(button) {{
-      const requestId = button.getAttribute('data-execute-request-id');
+      const matchId = button.getAttribute('data-execute-match-id');
       const outputId = button.getAttribute('data-execute-output');
       const output = outputId ? document.getElementById(outputId) : null;
       const feedback = button.parentElement ? button.parentElement.querySelector('.execute-feedback') : null;
-      if (!requestId || !output) {{
+      if (!matchId || !output) {{
         return;
       }}
       output.hidden = false;
@@ -363,7 +363,7 @@ def render_html(report: dict[str, Any]) -> str:
         const response = await fetch('/api/execute-prompt', {{
           method: 'POST',
           headers: {{ 'Content-Type': 'application/json' }},
-          body: JSON.stringify({{ request_id: requestId }}),
+          body: JSON.stringify({{ match_id: matchId }}),
         }});
         const payload = await response.json();
         if (!response.ok) {{
@@ -426,13 +426,13 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     async function executeIR(button) {{
-      const requestId = button.getAttribute('data-execute-request-id');
+      const matchId = button.getAttribute('data-execute-match-id');
       const outputId = button.getAttribute('data-execute-output');
       const filenameInputId = button.getAttribute('data-execute-filename-input');
       const output = outputId ? document.getElementById(outputId) : null;
       const filenameInput = filenameInputId ? document.getElementById(filenameInputId) : null;
       const feedback = button.parentElement ? button.parentElement.querySelector('.execute-feedback') : null;
-      if (!requestId || !output) {{
+      if (!matchId || !output) {{
         return;
       }}
       output.hidden = false;
@@ -442,7 +442,7 @@ def render_html(report: dict[str, Any]) -> str:
           method: 'POST',
           headers: {{ 'Content-Type': 'application/json' }},
           body: JSON.stringify({{
-            request_id: requestId,
+            match_id: matchId,
             source_filename: filenameInput ? filenameInput.value.trim() : '',
           }}),
         }});
@@ -478,7 +478,7 @@ def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> st
 
 
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
-    title = f"{match['anchor_timestamp']} | {match['request_id']} | 第 {match['index']} 次调用"
+    title = f"{match['anchor_timestamp']} | 线程 {match['thread_id']} | 第 {match['index']} 次调用"
     sections = [
         _render_text_section("命中锚点日志", match["anchor_line"]),
         _render_collapsible_list_section("RAG 检索结果", match["rag_results"]),
@@ -489,7 +489,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             "最终 Prompt",
             match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
             f"final-prompt-{anchor_id}",
-            request_id=match["request_id"],
+            match_id=match["match_id"],
             executable=bool(match["final_prompt"].get("system") and match["final_prompt"].get("user")),
             prompt=match["final_prompt"],
         ),
@@ -499,7 +499,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             match["complete_ir"],
             f"complete-ir-{anchor_id}",
             show_execute=True,
-            request_id=match["request_id"],
+            match_id=match["match_id"],
         ),
     ]
 
@@ -517,7 +517,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     return f"""
     <section id="{escape(anchor_id)}" class="match">
       <h2>{escape(title)}</h2>
-      <div class="meta">调用 ID：{escape(match['request_id'])}</div>
+      <div class="meta">线程 ID：{escape(match['thread_id'])}</div>
       {''.join(sections)}
     </section>
     """
@@ -557,7 +557,7 @@ def _render_copyable_text_section(
     content: str,
     target_id: str,
     show_execute: bool = False,
-    request_id: str | None = None,
+    match_id: str | None = None,
 ) -> str:
     if not content:
         return _render_text_section(title, content)
@@ -567,7 +567,7 @@ def _render_copyable_text_section(
             f'<input id="{escape(target_id)}-filename" class="filename-input" type="text" '
             f'placeholder="case_时间戳.py" title="源文件名" />'
             f'<button type="button" class="execute-btn" '
-            f'data-execute-request-id="{escape(request_id or "")}" '
+            f'data-execute-match-id="{escape(match_id or "")}" '
             f'data-execute-output="{escape(target_id)}-result" '
             f'data-execute-filename-input="{escape(target_id)}-filename" '
             f'onclick="executeIR(this)" title="执行">▶</button>'
@@ -613,7 +613,7 @@ def _render_collapsible_prompt_execution_section(
     title: str,
     content: str,
     target_id: str,
-    request_id: str,
+    match_id: str,
     executable: bool,
     prompt: dict[str, str] | None = None,
 ) -> str:
@@ -633,7 +633,7 @@ def _render_collapsible_prompt_execution_section(
     if executable:
         execute_controls = (
             f'<button type="button" class="execute-btn" '
-            f'data-execute-request-id="{escape(request_id)}" '
+            f'data-execute-match-id="{escape(match_id)}" '
             f'data-execute-output="{escape(target_id)}-result" '
             f'onclick="executePrompt(this)" title="执行">▶</button>'
             f'<span class="execute-feedback" aria-live="polite">已执行</span>'

@@ -70,8 +70,13 @@ class ListPromptIR:
 tables = get_tables_columns(table_exprs)
 """
 
-
-def _build_ir_only_report(complete_ir: str, request_id: str = "823456789012345") -> dict:
+def _build_ir_only_report(
+    complete_ir: str,
+    thread_id: str = "823456789012345",
+    line_number: int = 1,
+    match_id: str | None = None,
+) -> dict:
+    resolved_match_id = match_id or f"{thread_id}:{line_number}"
     return {
         "tool": "chatbi-smart-query-log-extractor",
         "version": "test",
@@ -85,10 +90,11 @@ def _build_ir_only_report(complete_ir: str, request_id: str = "823456789012345")
                 "matches": [
                     {
                         "index": 1,
-                        "request_id": request_id,
+                        "thread_id": thread_id,
+                        "match_id": resolved_match_id,
                         "anchor_timestamp": "2026-04-07 00:00:00.000",
                         "anchor_line": "anchor",
-                        "line_number": 1,
+                        "line_number": line_number,
                         "rag_results": [],
                         "rewritten_question": "",
                         "recalled_tables": [],
@@ -103,6 +109,10 @@ def _build_ir_only_report(complete_ir: str, request_id: str = "823456789012345")
             }
         ],
     }
+
+
+def _build_match_id(thread_id: str, line_number: int) -> str:
+    return f"{thread_id}:{line_number}"
 
 
 def _write_executor_config(
@@ -149,8 +159,12 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(first_group["question"], QUESTION)
         self.assertEqual(first_group["total_matches"], 2)
         self.assertEqual(
-            [match["request_id"] for match in first_group["matches"]],
+            [match["thread_id"] for match in first_group["matches"]],
             ["423456789012345", "523456789012345"],
+        )
+        self.assertEqual(
+            [match["match_id"] for match in first_group["matches"]],
+            [_build_match_id("423456789012345", 1), _build_match_id("523456789012345", 26)],
         )
 
         first = first_group["matches"][0]
@@ -190,7 +204,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(report["questions"][0]["total_matches"], 2)
 
         first = report["questions"][0]["matches"][0]
-        self.assertEqual(first["request_id"], "123456789012345")
+        self.assertEqual(first["thread_id"], "123456789012345")
+        self.assertEqual(first["match_id"], _build_match_id("123456789012345", 1))
         self.assertEqual(first["anchor_timestamp"], "2026-04-02 19:00:01.665")
         self.assertIn("knowledge retriever success", first["rag_results"][0])
         self.assertEqual(first["rewritten_question"], "请查询近7天销售额")
@@ -210,7 +225,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(first["parse_errors"], [])
 
         second = report["questions"][0]["matches"][1]
-        self.assertEqual(second["request_id"], "223456789012345")
+        self.assertEqual(second["thread_id"], "223456789012345")
+        self.assertEqual(second["match_id"], _build_match_id("223456789012345", 18))
         self.assertEqual(second["anchor_timestamp"], "2026-04-02 19:05:01.665")
         self.assertIn("rag_results", second["missing_sections"])
         self.assertIn("ir_table_definition", second["missing_sections"])
@@ -243,6 +259,39 @@ class ExtractorTests(unittest.TestCase):
         )
         self.assertNotIn("final_prompt", "".join(match["parse_errors"]))
 
+    def test_extract_report_uses_thread_window_when_thread_id_is_reused(self) -> None:
+        report = extract_report((FIXTURES_ROOT / "thread_reuse_chatbi.log").read_text(encoding="utf-8"), "thread_reuse_chatbi.log")
+
+        self.assertEqual(report["total_questions"], 2)
+        first_group = report["questions"][0]
+        self.assertEqual(first_group["question"], QUESTION)
+        self.assertEqual(first_group["total_matches"], 2)
+
+        first = first_group["matches"][0]
+        self.assertEqual(first["thread_id"], "111111111111111")
+        self.assertEqual(first["match_id"], _build_match_id("111111111111111", 1))
+        self.assertEqual(first["rag_results"], ["2026-04-04 10:00:00.010 [INFO] [111111111111111] knowledge retriever success retrieved docs: first_doc"])
+        self.assertEqual(first["ir_table_definition"], "table first_sales(id)\nfield first_metric")
+        self.assertNotIn("unrelated other request", first["ir_table_definition"])
+        self.assertEqual(first["final_prompt"]["combined"], "first system\n\nfirst user")
+        self.assertIn("class FirstIR:", first["generated_ir"])
+        self.assertNotIn("class SecondIR:", first["generated_ir"])
+        self.assertIn("ir_table_definition: missing terminator", "".join(first["parse_errors"]))
+        self.assertIn("complete_ir", first["missing_sections"])
+
+        second = first_group["matches"][1]
+        self.assertEqual(second["thread_id"], "111111111111111")
+        self.assertEqual(second["match_id"], _build_match_id("111111111111111", 11))
+        self.assertEqual(second["rewritten_question"], "第二次改写")
+        self.assertEqual(second["recalled_tables"], ["2026-04-04 10:01:00.030 [INFO] [111111111111111] Schema链接完成", "second_sales"])
+        self.assertIn("class SecondIR:", second["generated_ir"])
+        self.assertNotIn("class MarginIR:", second["generated_ir"])
+
+        second_group = report["questions"][1]
+        self.assertEqual(second_group["question"], "毛利率是多少")
+        self.assertEqual(second_group["total_matches"], 1)
+        self.assertEqual(second_group["matches"][0]["match_id"], _build_match_id("111111111111111", 24))
+
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")
 
@@ -258,6 +307,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("423456789012345", html)
         self.assertIn('href="#question-1"', html)
         self.assertIn('href="#question-2"', html)
+        self.assertIn('href="#question-1-match-1">2026-04-03 09:15:00.001</a>', html)
         self.assertIn(".nav {", html)
         self.assertIn("max-height: calc(100vh - 32px);", html)
         self.assertIn("overflow-y: auto;", html)
@@ -268,7 +318,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn("Prompt / system", html)
         self.assertNotIn("Prompt / user", html)
         self.assertNotIn("Prompt / combined", html)
-        self.assertIn('data-execute-request-id="423456789012345"', html)
+        self.assertIn('data-execute-match-id="423456789012345:1"', html)
         self.assertIn('data-execute-output="final-prompt-question-1-match-1-result"', html)
         self.assertIn("executePrompt(this)", html)
         self.assertIn('class="copy-btn"', html)
@@ -286,7 +336,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('id="complete-ir-question-1-match-1-filename"', html)
         self.assertIn('placeholder="case_时间戳.py"', html)
         self.assertIn('class="execute-btn"', html)
-        self.assertIn('data-execute-request-id="423456789012345"', html)
+        self.assertIn('data-execute-match-id="423456789012345:1"', html)
         self.assertIn('data-execute-output="complete-ir-question-1-match-1-result"', html)
         self.assertIn('data-execute-filename-input="complete-ir-question-1-match-1-filename"', html)
         self.assertIn(">▶</button>", html)
@@ -299,6 +349,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("copySection(this)", html)
         self.assertNotIn('<details class="section collapsible" open>', html)
         self.assertIn("完整 IR", html)
+        self.assertIn("线程 ID：423456789012345", html)
+        self.assertNotIn("调用 ID：", html)
         self.assertIn("未命中该字段", html)
 
     def test_execute_prompt_endpoint_uses_original_two_message_payload(self) -> None:
@@ -309,7 +361,7 @@ class ExtractorTests(unittest.TestCase):
         try:
             response = requests.post(
                 f"{server.base_url}/api/execute-prompt",
-                json={"request_id": "123456789012345"},
+                json={"match_id": _build_match_id("123456789012345", 1)},
                 timeout=5,
             )
 
@@ -367,7 +419,7 @@ class ExtractorTests(unittest.TestCase):
 
             execute_response = requests.post(
                 f"{server.base_url}/api/execute-prompt",
-                json={"request_id": "123456789012345"},
+                json={"match_id": _build_match_id("123456789012345", 1)},
                 timeout=5,
             )
             self.assertEqual(execute_response.status_code, 200)
@@ -394,7 +446,7 @@ class ExtractorTests(unittest.TestCase):
                         "resulted_sql = to_sql(intent_result)",
                     ]
                 ),
-                request_id="823456789012345",
+                thread_id="823456789012345",
             )
             server = build_report_server(
                 report,
@@ -408,7 +460,7 @@ class ExtractorTests(unittest.TestCase):
             try:
                 response = requests.post(
                     f"{server.base_url}/api/execute-ir",
-                    json={"request_id": "823456789012345", "source_filename": "demo_case"},
+                    json={"match_id": _build_match_id("823456789012345", 1), "source_filename": "demo_case"},
                     timeout=5,
                 )
                 self.assertEqual(response.status_code, 200)
@@ -461,7 +513,7 @@ class ExtractorTests(unittest.TestCase):
                         "resulted_sql = to_sql(intent_result)",
                     ]
                 ),
-                request_id="833456789012345",
+                thread_id="833456789012345",
             )
             server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -469,7 +521,7 @@ class ExtractorTests(unittest.TestCase):
             try:
                 response = requests.post(
                     f"{server.base_url}/api/execute-ir",
-                    json={"request_id": "833456789012345", "source_filename": "import_case"},
+                    json={"match_id": _build_match_id("833456789012345", 1), "source_filename": "import_case"},
                     timeout=5,
                 )
                 self.assertEqual(response.status_code, 200)
@@ -507,7 +559,7 @@ class ExtractorTests(unittest.TestCase):
                         "resulted_sql = to_sql(intent_result)",
                     ]
                 ),
-                request_id="843456789012345",
+                thread_id="843456789012345",
             )
             server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -515,7 +567,7 @@ class ExtractorTests(unittest.TestCase):
             try:
                 response = requests.post(
                     f"{server.base_url}/api/execute-ir",
-                    json={"request_id": "843456789012345", "source_filename": "env_case"},
+                    json={"match_id": _build_match_id("843456789012345", 1), "source_filename": "env_case"},
                     timeout=5,
                 )
                 self.assertEqual(response.status_code, 200)
@@ -546,7 +598,7 @@ class ExtractorTests(unittest.TestCase):
                         "resulted_sql = to_sql(intent_result)",
                     ]
                 ),
-                request_id="923456789012345",
+                thread_id="923456789012345",
             )
             server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -554,7 +606,7 @@ class ExtractorTests(unittest.TestCase):
             try:
                 response = requests.post(
                     f"{server.base_url}/api/execute-ir",
-                    json={"request_id": "923456789012345"},
+                    json={"match_id": _build_match_id("923456789012345", 1)},
                     timeout=5,
                 )
                 self.assertEqual(response.status_code, 200)
@@ -581,7 +633,7 @@ class ExtractorTests(unittest.TestCase):
             try:
                 response = requests.post(
                     f"{server.base_url}/api/execute-ir",
-                    json={"request_id": "823456789012345", "source_filename": "..\\bad.py"},
+                    json={"match_id": _build_match_id("823456789012345", 1), "source_filename": "..\\bad.py"},
                     timeout=5,
                 )
                 self.assertEqual(response.status_code, 400)
@@ -607,7 +659,7 @@ class ExtractorTests(unittest.TestCase):
         try:
             response = requests.post(
                 f"{server.base_url}/api/execute-ir",
-                json={"request_id": "823456789012345"},
+                json={"match_id": _build_match_id("823456789012345", 1)},
                 timeout=5,
             )
             self.assertEqual(response.status_code, 500)
@@ -624,14 +676,14 @@ class ExtractorTests(unittest.TestCase):
         try:
             config_path = temp_dir / "executors.local.yaml"
             _write_executor_config(config_path, temp_dir)
-            report = _build_ir_only_report("print('no sql anchor')", request_id="723456789012345")
+            report = _build_ir_only_report("print('no sql anchor')", thread_id="723456789012345")
             server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
                 response = requests.post(
                     f"{server.base_url}/api/execute-ir",
-                    json={"request_id": "723456789012345"},
+                    json={"match_id": _build_match_id("723456789012345", 1)},
                     timeout=5,
                 )
                 self.assertEqual(response.status_code, 400)
@@ -713,7 +765,8 @@ class CliTests(unittest.TestCase):
             payload = json.loads(json_files[0].read_text(encoding="utf-8"))
             self.assertEqual(payload["total_questions"], 1)
             self.assertEqual(payload["questions"][0]["question"], QUESTION)
-            self.assertEqual(payload["questions"][0]["matches"][0]["request_id"], "123456789012345")
+            self.assertEqual(payload["questions"][0]["matches"][0]["thread_id"], "123456789012345")
+            self.assertEqual(payload["questions"][0]["matches"][0]["match_id"], _build_match_id("123456789012345", 1))
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

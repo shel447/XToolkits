@@ -11,7 +11,7 @@ from . import __version__
 import re
 
 TIMESTAMP_RE = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")
-REQUEST_ID_RE = re.compile(r"(?<!\d)(?P<request_id>\d{15})(?!\d)")
+THREAD_ID_RE = re.compile(r"(?<!\d)(?P<thread_id>\d{15})(?!\d)")
 
 ANCHOR_KEYWORD = "sql_template_match"
 QUERY_MARKER = "query:"
@@ -79,24 +79,32 @@ def has_partial_failures(report: dict[str, Any]) -> bool:
 
 def _collect_anchor_entries(lines: list[str]) -> list[dict[str, Any]]:
     anchors: list[dict[str, Any]] = []
+    file_end_line_number = len(lines) + 1
+    last_anchor_index_by_thread: dict[str, int] = {}
     for line_number, line in enumerate(lines, start=1):
         if ANCHOR_KEYWORD not in line:
             continue
         anchor_question = _extract_anchor_question(line)
         if not anchor_question:
             continue
-        request_id = _extract_request_id(line)
-        if request_id is None:
+        thread_id = _extract_thread_id(line)
+        if thread_id is None:
             continue
+        previous_anchor_index = last_anchor_index_by_thread.get(thread_id)
+        if previous_anchor_index is not None:
+            anchors[previous_anchor_index]["window_end_line_number"] = line_number
         anchors.append(
             {
                 "question": anchor_question,
-                "request_id": request_id,
+                "thread_id": thread_id,
+                "match_id": _build_match_id(thread_id, line_number),
                 "anchor_timestamp": _extract_timestamp(line) or "",
                 "anchor_line": line,
                 "line_number": line_number,
+                "window_end_line_number": file_end_line_number,
             }
         )
+        last_anchor_index_by_thread[thread_id] = len(anchors) - 1
     return anchors
 
 
@@ -129,19 +137,23 @@ def _build_question_group(question: str, anchors: list[dict[str, Any]], lines: l
 
 
 def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[str, Any]:
-    request_id = anchor["request_id"]
+    thread_id = anchor["thread_id"]
+    match_id = anchor["match_id"]
+    window_lines = lines[anchor["line_number"] - 1 : anchor["window_end_line_number"] - 1]
     rag_results = [
-        line.strip() for line in lines if request_id in line and RAG_KEYWORD in line
+        line.strip()
+        for line in window_lines
+        if _line_has_thread_id(line, thread_id) and RAG_KEYWORD in line
     ]
 
     rewritten_question = ""
-    for line in lines:
-        if request_id in line and REWRITE_KEYWORD in line:
+    for line in window_lines:
+        if _line_has_thread_id(line, thread_id) and REWRITE_KEYWORD in line:
             rewritten_question = _extract_after_last_bracket(line)
 
     recalled_tables: list[str] = []
-    for line in lines:
-        if request_id not in line:
+    for line in window_lines:
+        if not _line_has_thread_id(line, thread_id):
             continue
         if RECALL_KEYWORD in line:
             recalled_tables.append(line.split("召回表:", 1)[-1].strip())
@@ -149,22 +161,22 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
             recalled_tables.append(line.strip())
 
     ir_table_definition, ir_def_errors = _extract_multiline_block(
-        lines,
-        request_id=request_id,
+        window_lines,
+        thread_id=thread_id,
         start_keyword=IR_DEF_START,
         stop_keyword=IR_DEF_STOP,
         include_stop=False,
         start_mode="after_keyword",
     )
     generated_ir, generated_ir_errors = _extract_multiline_block(
-        lines,
-        request_id=request_id,
+        window_lines,
+        thread_id=thread_id,
         start_keyword=IR_RESULT_START,
         stop_keyword=IR_RESULT_STOP,
         include_stop=True,
         start_mode="after_keyword",
     )
-    final_prompt, final_prompt_errors = _extract_final_prompt(lines, request_id)
+    final_prompt, final_prompt_errors = _extract_final_prompt(window_lines, thread_id)
     complete_ir, complete_ir_errors = _build_complete_ir(
         ir_table_definition,
         generated_ir,
@@ -192,7 +204,8 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
 
     return {
         "index": index,
-        "request_id": request_id,
+        "thread_id": thread_id,
+        "match_id": match_id,
         "anchor_timestamp": anchor["anchor_timestamp"],
         "anchor_line": anchor["anchor_line"],
         "line_number": anchor["line_number"],
@@ -210,7 +223,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
 
 def _extract_multiline_block(
     lines: list[str],
-    request_id: str,
+    thread_id: str,
     start_keyword: str,
     stop_keyword: str,
     include_stop: bool,
@@ -218,7 +231,7 @@ def _extract_multiline_block(
 ) -> tuple[str, list[str]]:
     start_index: int | None = None
     for index, line in enumerate(lines):
-        if request_id in line and start_keyword in line:
+        if _line_has_thread_id(line, thread_id) and start_keyword in line:
             start_index = index
             break
 
@@ -244,6 +257,10 @@ def _extract_multiline_block(
                 block_lines.append(line)
             stop_found = True
             break
+        if _is_log_line(line):
+            if _line_has_thread_id(line, thread_id):
+                break
+            continue
         block_lines.append(line)
 
     errors: list[str] = []
@@ -252,10 +269,10 @@ def _extract_multiline_block(
     return "\n".join(block_lines).strip(), errors
 
 
-def _extract_final_prompt(lines: list[str], request_id: str) -> tuple[dict[str, str], list[str]]:
+def _extract_final_prompt(lines: list[str], thread_id: str) -> tuple[dict[str, str], list[str]]:
     raw_payload = ""
     for line in lines:
-        if request_id in line and PROMPT_KEYWORD in line:
+        if _line_has_thread_id(line, thread_id) and PROMPT_KEYWORD in line:
             raw_payload = _extract_after_prompt_keyword(line)
 
     prompt = {"raw": raw_payload, "system": "", "user": "", "combined": ""}
@@ -370,9 +387,13 @@ def _extract_after_last_bracket(line: str) -> str:
     return line[closing_index + 1 :].strip()
 
 
-def _extract_request_id(line: str) -> str | None:
-    match = REQUEST_ID_RE.search(line)
-    return match.group("request_id") if match else None
+def _extract_thread_id(line: str) -> str | None:
+    match = THREAD_ID_RE.search(line)
+    return match.group("thread_id") if match else None
+
+
+def _build_match_id(thread_id: str, line_number: int) -> str:
+    return f"{thread_id}:{line_number}"
 
 
 def _extract_anchor_question(line: str) -> str | None:
@@ -385,6 +406,14 @@ def _extract_anchor_question(line: str) -> str | None:
 def _extract_timestamp(line: str) -> str | None:
     match = TIMESTAMP_RE.match(line)
     return match.group("ts") if match else None
+
+
+def _is_log_line(line: str) -> bool:
+    return _extract_timestamp(line) is not None
+
+
+def _line_has_thread_id(line: str, thread_id: str) -> bool:
+    return _extract_thread_id(line) == thread_id
 
 
 def _section_name_from_keyword(keyword: str) -> str:

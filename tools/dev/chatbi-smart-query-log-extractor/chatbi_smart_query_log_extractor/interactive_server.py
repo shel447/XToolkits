@@ -77,12 +77,12 @@ class ReportRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid json body"})
             return
 
-        request_id = str(payload.get("request_id", "")).strip()
-        if not request_id:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request_id is required"})
+        match_id = str(payload.get("match_id", "")).strip()
+        if not match_id:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "match_id is required"})
             return
 
-        messages = _find_prompt_messages(self.server.report, request_id)
+        messages = _find_prompt_messages(self.server.report, match_id)
         if messages is None:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "prompt messages not found"})
             return
@@ -179,9 +179,9 @@ class ReportRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "invalid json body"})
             return
 
-        request_id = str(payload.get("request_id", "")).strip()
-        if not request_id:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "request_id is required"})
+        match_id = str(payload.get("match_id", "")).strip()
+        if not match_id:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "match_id is required"})
             return
 
         executor_name = payload.get("executor")
@@ -197,7 +197,7 @@ class ReportRequestHandler(BaseHTTPRequestHandler):
         try:
             result = execute_complete_ir(
                 self.server.report,
-                request_id=request_id,
+                match_id=match_id,
                 executor_name=executor_name,
                 source_filename=source_filename,
                 config_path=self.server.config_path,
@@ -262,10 +262,10 @@ def serve_report(
         server.server_close()
 
 
-def _find_prompt_messages(report: dict[str, Any], request_id: str) -> list[dict[str, str]] | None:
+def _find_prompt_messages(report: dict[str, Any], match_id: str) -> list[dict[str, str]] | None:
     for question_group in report.get("questions", []):
         for match in question_group.get("matches", []):
-            if match.get("request_id") != request_id:
+            if match.get("match_id") != match_id:
                 continue
             prompt = match.get("final_prompt", {})
             system = prompt.get("system", "")

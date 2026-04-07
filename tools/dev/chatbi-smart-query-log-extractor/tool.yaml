@@ -1,6 +1,6 @@
 id: chatbi-smart-query-log-extractor
 name: ChatBI Smart Query Log Extractor
-summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, then extract call-level key segments, derived complete IR, and render JSON and HTML outputs.
+summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, then cut per-thread call windows, assign match_id values, and render JSON and HTML outputs.
 type: script
 scope: shared
 category: dev
@@ -58,6 +58,8 @@ interface:
     format: json + html
     fields:
       - question groups
+      - thread_id
+      - match_id
       - rag_results
       - rewritten_question
       - recalled_tables
@@ -76,7 +78,7 @@ interface:
     - creates output directories
     - writes JSON and HTML report files
     - can start a local HTTP server and call a fake /chat/completion endpoint with requests verify=False
-    - can write complete_ir into a configured target project directory and execute it via a local command
+    - can write complete_ir into a configured target project directory and execute it via a local command located by match_id
     - in --serve mode keeps the currently parsed report in memory and lets the page switch logs without changing port
   examples:
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output

@@ -1,0 +1,30 @@
+2026-04-04 10:00:00.001 [INFO] [111111111111111] sql_template_match hit query: 近7天销售额是多少
+2026-04-04 10:00:00.010 [INFO] [111111111111111] knowledge retriever success retrieved docs: first_doc
+2026-04-04 10:00:00.020 [INFO] [111111111111111] 表定义的IR：table first_sales(id)
+field first_metric
+2026-04-04 10:00:00.030 [INFO] [999999999999999] unrelated other request should be ignored
+2026-04-04 10:00:00.040 [INFO] [111111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'first system'}, {'role': 'user', 'content': 'first user'}]}
+2026-04-04 10:00:00.050 [INFO] [111111111111111] 最终的IR
+@dataclass
+class FirstIR:
+tables = get_tables_columns(table_exprs)
+2026-04-04 10:01:00.001 [INFO] [111111111111111] sql_template_match hit query: 近7天销售额是多少
+2026-04-04 10:01:00.010 [INFO] [111111111111111] knowledge retriever success retrieved docs: second_doc
+2026-04-04 10:01:00.020 [INFO] [111111111111111] rewrite question from [origin] [final] 第二次改写
+2026-04-04 10:01:00.030 [INFO] [111111111111111] Schema链接完成
+2026-04-04 10:01:00.040 [INFO] [111111111111111] 召回表: second_sales
+2026-04-04 10:01:00.050 [INFO] [111111111111111] 表定义的IR：table second_sales(id)
+field second_metric
+2026-04-04 10:01:00.060 [INFO] [111111111111111] code guardrail check result safe
+2026-04-04 10:01:00.070 [INFO] [111111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'second system'}, {'role': 'user', 'content': 'second user'}]}
+2026-04-04 10:01:00.080 [INFO] [111111111111111] 最终的IR
+@dataclass
+class SecondIR:
+tables = get_tables_columns(table_exprs)
+2026-04-04 10:02:00.001 [INFO] [111111111111111] sql_template_match hit query: 毛利率是多少
+2026-04-04 10:02:00.010 [INFO] [111111111111111] knowledge retriever success retrieved docs: margin_doc
+2026-04-04 10:02:00.020 [INFO] [111111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'margin system'}, {'role': 'user', 'content': 'margin user'}]}
+2026-04-04 10:02:00.030 [INFO] [111111111111111] 最终的IR
+@dataclass
+class MarginIR:
+tables = get_tables_columns(table_exprs)
