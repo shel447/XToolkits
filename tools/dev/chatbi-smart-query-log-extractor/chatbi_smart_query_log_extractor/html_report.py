@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from html import escape
 from typing import Any
 
@@ -194,6 +195,13 @@ def render_html(report: dict[str, Any]) -> str:
     .copy-btn:hover {{
       background: #e8f5f2;
     }}
+    .copy-json-btn {{
+      width: auto;
+      min-width: 42px;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }}
     .execute-btn {{
       width: 28px;
       height: 28px;
@@ -295,7 +303,7 @@ def render_html(report: dict[str, Any]) -> str:
       if (!target) {{
         return;
       }}
-      const text = target.innerText;
+      const text = target.textContent || target.innerText || '';
       try {{
         if (navigator.clipboard && navigator.clipboard.writeText) {{
           await navigator.clipboard.writeText(text);
@@ -475,6 +483,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             f"final-prompt-{anchor_id}",
             request_id=match["request_id"],
             executable=bool(match["final_prompt"].get("system") and match["final_prompt"].get("user")),
+            prompt=match["final_prompt"],
         ),
         _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
         _render_copyable_text_section(
@@ -598,9 +607,20 @@ def _render_collapsible_prompt_execution_section(
     target_id: str,
     request_id: str,
     executable: bool,
+    prompt: dict[str, str] | None = None,
 ) -> str:
     if not content:
         return _render_text_section(title, content)
+    prompt_messages_json = _build_prompt_messages_json(prompt or {})
+    json_copy_button = ""
+    json_copy_payload = ""
+    if prompt_messages_json:
+        json_copy_button = (
+            f'<button type="button" class="copy-btn copy-json-btn" '
+            f'data-copy-target="{escape(target_id)}-messages-json" '
+            f'onclick="copySection(this)" title="复制 JSON">JSON</button>'
+        )
+        json_copy_payload = f'<pre id="{escape(target_id)}-messages-json" hidden>{escape(prompt_messages_json)}</pre>'
     execute_controls = ""
     if executable:
         execute_controls = (
@@ -618,15 +638,31 @@ def _render_collapsible_prompt_execution_section(
           <div></div>
           <div class="copy-actions">
             {execute_controls}
+            {json_copy_button}
             <button type="button" class="copy-btn" data-copy-target="{escape(target_id)}" onclick="copySection(this)" title="复制">⧉</button>
             <span class="copy-feedback" aria-live="polite">已复制</span>
           </div>
         </div>
         <pre id="{escape(target_id)}">{escape(content)}</pre>
+        {json_copy_payload}
         <pre id="{escape(target_id)}-result" class="execute-output" hidden></pre>
       </div>
     </details>
     """
+
+
+def _build_prompt_messages_json(prompt: dict[str, str]) -> str:
+    system = prompt.get("system", "")
+    user = prompt.get("user", "")
+    if not system or not user:
+        return ""
+    payload = {
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def _render_list_section(title: str, items: list[str], kind: str | None = None) -> str:

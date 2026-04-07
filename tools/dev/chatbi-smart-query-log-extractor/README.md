@@ -38,7 +38,7 @@ python -m chatbi_smart_query_log_extractor --log <log-file> [--question "<exact 
 ## Outputs
 
 - `*.json`: 顶层按问题分组的结构化提取结果，调用级结果包含 `ir_table_definition`、`generated_ir`、`complete_ir`
-- `*.html`: 先按问题分组、再按调用 ID 分块的排障页面；`RAG 检索结果`、`IR 表定义`、`最终 Prompt`、`生成 IR 结果` 默认折叠，按需展开查看；`最终 Prompt` 只展示合并后的内容并支持复制、执行，执行时仍按原始两条 `message` 一起调用；`完整 IR` 右上角提供复制按钮、文件名输入框和执行按钮，复制后会给一个小的“已复制”反馈
+- `*.html`: 先按问题分组、再按调用 ID 分块的排障页面；`RAG 检索结果`、`IR 表定义`、`最终 Prompt`、`生成 IR 结果` 默认折叠，按需展开查看；`最终 Prompt` 只展示合并后的内容，但支持两种复制方式：复制展示文本，或复制成合法的 `/chat/completion` `messages` JSON，并支持执行，执行时仍按原始两条 `message` 一起调用；`完整 IR` 右上角提供复制按钮、文件名输入框和执行按钮，复制后会给一个小的“已复制”反馈
 
 ## Examples
 
