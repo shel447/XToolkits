@@ -316,7 +316,9 @@ class ExtractorTests(unittest.TestCase):
 
         first = first_group["matches"][0]
         self.assertEqual(first["thread_id"], "101010101010101")
-        self.assertEqual(first["match_id"], _build_match_id("101010101010101", 2))
+        self.assertEqual(first["match_id"], _build_match_id("101010101010101", 1))
+        self.assertEqual(first["anchor_timestamp"], "2026-04-05 09:00:00.001")
+        self.assertIn("sql_template_match hit query: 近7天销售额是多少", first["anchor_line"])
         self.assertEqual(first["associated_thread_ids"], ["202020202020202", "303030303030303"])
         self.assertEqual(first["rewrite_questions"], ["请帮我统计最近7天销售额", "最近7天各门店销售额是多少"])
         self.assertEqual(first["rewritten_question"], "请帮我统计最近7天销售额")
@@ -333,7 +335,9 @@ class ExtractorTests(unittest.TestCase):
 
         second = first_group["matches"][1]
         self.assertEqual(second["thread_id"], "101010101010101")
-        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 23))
+        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 22))
+        self.assertEqual(second["anchor_timestamp"], "2026-04-05 09:05:00.001")
+        self.assertIn("sql_template_match hit query: 近7天销售额是多少", second["anchor_line"])
         self.assertEqual(second["associated_thread_ids"], ["404040404040404"])
         self.assertEqual(second["rewrite_questions"], ["请帮我统计最近7天销售额"])
         self.assertEqual(second["flow_status"], "failed")

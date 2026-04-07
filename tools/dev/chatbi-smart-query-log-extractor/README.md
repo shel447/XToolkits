@@ -48,7 +48,7 @@ python -m chatbi_smart_query_log_extractor --serve [--log <initial-log-file>] [-
 python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output
 ```
 
-该命令会自动发现日志中的问题，并优先按 `call sqlflow input:` 识别主调用；如果主线程分解出子线程，还会把命中的子线程一起归并回同一次调用，再生成 JSON 与 HTML 两份结果。
+该命令会自动发现日志中的问题，并优先按 `call sqlflow input:` 识别主调用边界；如果主线程分解出子线程，还会把命中的子线程一起归并回同一次调用。调用的展示锚点、时间和 `match_id` 仍然保持为原始 `sql_template_match` 命中日志。
 
 ```text
 python -m chatbi_smart_query_log_extractor --log .\chatbi.log --question "近7天销售额是多少" --output-dir .\output
@@ -132,7 +132,7 @@ resulted_sql = to_sql(intent_result)
 ## Limitations
 
 - 问题文本按字面值精确匹配，不做模糊匹配或同义改写
-- 自动发现问题仍基于 `sql_template_match` 的 `query:`；但如果日志中存在 `call sqlflow input:`，工具会优先把它当作主调用边界，并把改写问题再次触发的 `sql_template_match` 归并到当前调用
+- 自动发现问题仍基于 `sql_template_match` 的 `query:`；如果日志中存在 `call sqlflow input:`，工具会把它作为主调用边界，并把改写问题再次触发的 `sql_template_match` 归并到当前调用；但页面展示的锚点时间、锚点日志和 `match_id` 仍然使用原始命中问题的那条 `sql_template_match`
 - 日志中的 15 位数字按线程 ID 处理，不作为单次请求唯一标识；跨子线程场景下，工具会输出主线程 `thread_id`、全部 `associated_thread_ids`，并继续使用主线程上的 `match_id`
 - 最终 Prompt 只识别包含 `生成器任务：` 的日志行，并兼容 JSON、Python 对象直接序列化后的单引号消息体，或直接序列化的消息数组；会分别提取前两条 message 的 `content`
 - 页面展示的最终 Prompt 是合并结果，但执行时仍使用原始两条消息一起调用，不会直接把合并后的展示文本当请求体

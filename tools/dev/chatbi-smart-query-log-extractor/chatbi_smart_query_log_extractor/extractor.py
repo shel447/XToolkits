@@ -89,7 +89,7 @@ def has_partial_failures(report: dict[str, Any]) -> bool:
 
 
 def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
-    last_anchor_question_by_thread: dict[str, str] = {}
+    last_anchor_by_thread: dict[str, dict[str, Any]] = {}
     open_match_id_by_root_thread: dict[str, str] = {}
     thread_to_match_id: dict[str, str] = {}
     raw_matches_by_id: dict[str, dict[str, Any]] = {}
@@ -104,7 +104,12 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
         if ANCHOR_KEYWORD in line:
             anchor_question = _extract_anchor_question(line)
             if anchor_question:
-                last_anchor_question_by_thread[thread_id] = anchor_question
+                last_anchor_by_thread[thread_id] = {
+                    "question": anchor_question,
+                    "anchor_timestamp": _extract_timestamp(line) or "",
+                    "anchor_line": line,
+                    "line_number": line_number,
+                }
                 existing_match_id = thread_to_match_id.get(thread_id)
                 if existing_match_id is None:
                     match_id = _find_open_match_by_rewrite_question(
@@ -124,11 +129,18 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
         rewrite_question = _extract_after_keyword(line, CALL_SQLFLOW_INPUT_KEYWORD)
         current_match_id = thread_to_match_id.get(thread_id)
         if current_match_id is None:
+            anchor = _resolve_root_anchor(
+                last_anchor_by_thread.get(thread_id),
+                fallback_line=line,
+                fallback_line_number=line_number,
+                fallback_question=rewrite_question,
+            )
             raw_match = _open_root_match(
                 thread_id=thread_id,
-                line=line,
-                line_number=line_number,
-                question=last_anchor_question_by_thread.get(thread_id, "").strip() or rewrite_question,
+                question=anchor["question"],
+                anchor_line=anchor["anchor_line"],
+                anchor_timestamp=anchor["anchor_timestamp"],
+                anchor_line_number=anchor["line_number"],
                 rewrite_question=rewrite_question,
             )
             raw_matches_by_id[raw_match["match_id"]] = raw_match
@@ -139,12 +151,29 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
 
         current_match = raw_matches_by_id[current_match_id]
         if current_match["thread_id"] == thread_id:
-            _close_raw_match(current_match, line_number, thread_to_match_id, open_match_id_by_root_thread)
+            next_anchor = _resolve_root_anchor(
+                last_anchor_by_thread.get(thread_id),
+                fallback_line=line,
+                fallback_line_number=line_number,
+                fallback_question=rewrite_question,
+            )
+            next_call_start_line_number = (
+                next_anchor["line_number"]
+                if next_anchor["line_number"] > current_match["line_number"]
+                else line_number
+            )
+            _close_raw_match(
+                current_match,
+                next_call_start_line_number,
+                thread_to_match_id,
+                open_match_id_by_root_thread,
+            )
             raw_match = _open_root_match(
                 thread_id=thread_id,
-                line=line,
-                line_number=line_number,
-                question=last_anchor_question_by_thread.get(thread_id, "").strip() or rewrite_question,
+                question=next_anchor["question"],
+                anchor_line=next_anchor["anchor_line"],
+                anchor_timestamp=next_anchor["anchor_timestamp"],
+                anchor_line_number=next_anchor["line_number"],
                 rewrite_question=rewrite_question,
             )
             raw_matches_by_id[raw_match["match_id"]] = raw_match
@@ -169,23 +198,45 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
 
 def _open_root_match(
     thread_id: str,
-    line: str,
-    line_number: int,
     question: str,
+    anchor_line: str,
+    anchor_timestamp: str,
+    anchor_line_number: int,
     rewrite_question: str,
 ) -> dict[str, Any]:
     return {
         "question": question,
         "thread_id": thread_id,
-        "match_id": _build_match_id(thread_id, line_number),
-        "anchor_timestamp": _extract_timestamp(line) or "",
-        "anchor_line": line,
-        "line_number": line_number,
+        "match_id": _build_match_id(thread_id, anchor_line_number),
+        "anchor_timestamp": anchor_timestamp,
+        "anchor_line": anchor_line,
+        "line_number": anchor_line_number,
         "associated_thread_ids": [],
         "rewrite_questions": [rewrite_question] if rewrite_question else [],
-        "segments": {thread_id: [{"start_line_number": line_number, "end_line_number": None}]},
+        "segments": {thread_id: [{"start_line_number": anchor_line_number, "end_line_number": None}]},
         "participant_thread_ids": [thread_id],
         "end_line_number": None,
+    }
+
+
+def _resolve_root_anchor(
+    anchor: dict[str, Any] | None,
+    fallback_line: str,
+    fallback_line_number: int,
+    fallback_question: str,
+) -> dict[str, Any]:
+    if anchor is not None:
+        return {
+            "question": str(anchor.get("question", "")).strip() or fallback_question,
+            "anchor_timestamp": str(anchor.get("anchor_timestamp", "")),
+            "anchor_line": str(anchor.get("anchor_line", fallback_line)),
+            "line_number": int(anchor.get("line_number", fallback_line_number)),
+        }
+    return {
+        "question": fallback_question,
+        "anchor_timestamp": _extract_timestamp(fallback_line) or "",
+        "anchor_line": fallback_line,
+        "line_number": fallback_line_number,
     }
 
 

@@ -1,6 +1,6 @@
 id: chatbi-smart-query-log-extractor
 name: ChatBI Smart Query Log Extractor
-summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, then merge call sqlflow input driven child-thread activity back into each root call, assign match_id values, extract retry and failure status, and render JSON and HTML outputs.
+summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, keep sql_template_match as the stable call anchor and match_id source, merge call sqlflow input driven child-thread activity back into each root call, extract retry and failure status, and render JSON and HTML outputs.
 type: script
 scope: shared
 category: dev
