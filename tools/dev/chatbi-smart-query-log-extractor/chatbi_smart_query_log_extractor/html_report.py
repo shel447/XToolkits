@@ -77,6 +77,8 @@ def render_html(report: dict[str, Any]) -> str:
     .nav {{
       position: sticky;
       top: 16px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
       background: rgba(255, 255, 255, 0.9);
       backdrop-filter: blur(8px);
       border: 1px solid var(--border);
@@ -278,6 +280,8 @@ def render_html(report: dict[str, Any]) -> str:
       }}
       .nav {{
         position: static;
+        max-height: none;
+        overflow-y: visible;
       }}
     }}
   </style>
