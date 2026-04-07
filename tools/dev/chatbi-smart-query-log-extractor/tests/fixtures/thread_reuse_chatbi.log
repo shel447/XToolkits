@@ -4,6 +4,8 @@
 field first_metric
 2026-04-04 10:00:00.030 [INFO] [999999999999999] unrelated other request should be ignored
 2026-04-04 10:00:00.040 [INFO] [111111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'first system'}, {'role': 'user', 'content': 'first user'}]}
+2026-04-04 10:00:00.045 [WARN] [111111111111111] verifier result: 0: first verifier failure
+2026-04-04 10:00:00.046 [WARN] [111111111111111] verifier result: 0: second verifier failure
 2026-04-04 10:00:00.050 [INFO] [111111111111111] 最终的IR
 @dataclass
 class FirstIR:
@@ -21,6 +23,8 @@ field second_metric
 @dataclass
 class SecondIR:
 tables = get_tables_columns(table_exprs)
+2026-04-04 10:01:00.090 [WARN] [111111111111111] verifier result: 0: second call verifier failure
+2026-04-04 10:01:00.091 [ERROR] [111111111111111] sql_flow exception: SQL is empty
 2026-04-04 10:02:00.001 [INFO] [111111111111111] sql_template_match hit query: 毛利率是多少
 2026-04-04 10:02:00.010 [INFO] [111111111111111] knowledge retriever success retrieved docs: margin_doc
 2026-04-04 10:02:00.020 [INFO] [111111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'margin system'}, {'role': 'user', 'content': 'margin user'}]}

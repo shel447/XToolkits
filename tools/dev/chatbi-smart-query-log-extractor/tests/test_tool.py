@@ -102,6 +102,9 @@ def _build_ir_only_report(
                         "final_prompt": {"raw": "", "system": "", "user": "", "combined": ""},
                         "generated_ir": "",
                         "complete_ir": complete_ir,
+                        "flow_status": "success",
+                        "retry_count": 0,
+                        "verifier_failures": [],
                         "missing_sections": [],
                         "parse_errors": [],
                     }
@@ -270,6 +273,9 @@ class ExtractorTests(unittest.TestCase):
         first = first_group["matches"][0]
         self.assertEqual(first["thread_id"], "111111111111111")
         self.assertEqual(first["match_id"], _build_match_id("111111111111111", 1))
+        self.assertEqual(first["flow_status"], "success")
+        self.assertEqual(first["retry_count"], 2)
+        self.assertEqual(first["verifier_failures"], ["first verifier failure", "second verifier failure"])
         self.assertEqual(first["rag_results"], ["2026-04-04 10:00:00.010 [INFO] [111111111111111] knowledge retriever success retrieved docs: first_doc"])
         self.assertEqual(first["ir_table_definition"], "table first_sales(id)\nfield first_metric")
         self.assertNotIn("unrelated other request", first["ir_table_definition"])
@@ -281,7 +287,10 @@ class ExtractorTests(unittest.TestCase):
 
         second = first_group["matches"][1]
         self.assertEqual(second["thread_id"], "111111111111111")
-        self.assertEqual(second["match_id"], _build_match_id("111111111111111", 11))
+        self.assertEqual(second["match_id"], _build_match_id("111111111111111", 13))
+        self.assertEqual(second["flow_status"], "failed")
+        self.assertEqual(second["retry_count"], 1)
+        self.assertEqual(second["verifier_failures"], ["second call verifier failure"])
         self.assertEqual(second["rewritten_question"], "第二次改写")
         self.assertEqual(second["recalled_tables"], ["2026-04-04 10:01:00.030 [INFO] [111111111111111] Schema链接完成", "second_sales"])
         self.assertIn("class SecondIR:", second["generated_ir"])
@@ -290,7 +299,10 @@ class ExtractorTests(unittest.TestCase):
         second_group = report["questions"][1]
         self.assertEqual(second_group["question"], "毛利率是多少")
         self.assertEqual(second_group["total_matches"], 1)
-        self.assertEqual(second_group["matches"][0]["match_id"], _build_match_id("111111111111111", 24))
+        self.assertEqual(second_group["matches"][0]["match_id"], _build_match_id("111111111111111", 28))
+        self.assertEqual(second_group["matches"][0]["flow_status"], "success")
+        self.assertEqual(second_group["matches"][0]["retry_count"], 0)
+        self.assertEqual(second_group["matches"][0]["verifier_failures"], [])
 
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")
@@ -307,7 +319,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("423456789012345", html)
         self.assertIn('href="#question-1"', html)
         self.assertIn('href="#question-2"', html)
-        self.assertIn('href="#question-1-match-1">2026-04-03 09:15:00.001</a>', html)
+        self.assertIn('href="#question-1-match-1"', html)
+        self.assertIn('class="nav-match-time">2026-04-03 09:15:00.001</span>', html)
         self.assertIn(".nav {", html)
         self.assertIn("max-height: calc(100vh - 32px);", html)
         self.assertIn("overflow-y: auto;", html)
@@ -352,6 +365,32 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("线程 ID：423456789012345", html)
         self.assertNotIn("调用 ID：", html)
         self.assertIn("未命中该字段", html)
+
+    def test_render_html_shows_retry_badges_and_failure_blocks(self) -> None:
+        report = extract_report((FIXTURES_ROOT / "thread_reuse_chatbi.log").read_text(encoding="utf-8"), "thread_reuse_chatbi.log")
+        html = render_html(report)
+
+        self.assertIn("nav-status nav-status-success", html)
+        self.assertIn("nav-status nav-status-failed", html)
+        self.assertIn('class="nav-retry-badge">2</span>', html)
+        self.assertIn('class="nav-retry-badge">1</span>', html)
+        self.assertIn('class="nav-retry-badge">0</span>', html)
+        self.assertIn("流程状态：成功", html)
+        self.assertIn("流程状态：失败", html)
+        self.assertIn("重试次数：2", html)
+        self.assertIn("重试次数：1", html)
+        self.assertIn("重试记录", html)
+        self.assertIn("最终失败原因", html)
+        self.assertIn("first verifier failure", html)
+        self.assertIn("second verifier failure", html)
+        self.assertIn("second call verifier failure", html)
+        self.assertIn(".retry-block {", html)
+        self.assertIn("background: #fff6db;", html)
+        self.assertIn(".failure-block {", html)
+        self.assertIn("background: #fff0f0;", html)
+        self.assertIn('href="#question-1-match-1"', html)
+        self.assertIn('href="#question-1-match-2"', html)
+        self.assertNotIn('href="#question-1-match-1">111111111111111</a>', html)
 
     def test_execute_prompt_endpoint_uses_original_two_message_payload(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter=QUESTION)

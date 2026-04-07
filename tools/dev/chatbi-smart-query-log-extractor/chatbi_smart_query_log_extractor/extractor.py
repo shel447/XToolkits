@@ -24,6 +24,8 @@ IR_DEF_STOP = "code guardrail check result"
 PROMPT_KEYWORD = "生成器任务："
 IR_RESULT_START = "最终的IR"
 IR_RESULT_STOP = "tables = get_tables_columns(table_exprs)"
+VERIFIER_FAIL_KEYWORD = "verifier result: 0:"
+FLOW_FAIL_KEYWORD = "sql_flow exception: SQL is empty"
 
 
 def read_log_text(log_path: str | Path, encoding: str | None = None) -> str:
@@ -140,6 +142,16 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
     thread_id = anchor["thread_id"]
     match_id = anchor["match_id"]
     window_lines = lines[anchor["line_number"] - 1 : anchor["window_end_line_number"] - 1]
+    verifier_failures = [
+        _extract_after_keyword(line, VERIFIER_FAIL_KEYWORD)
+        for line in window_lines
+        if _line_has_thread_id(line, thread_id) and VERIFIER_FAIL_KEYWORD in line
+    ]
+    flow_status = (
+        "failed"
+        if any(_line_has_thread_id(line, thread_id) and FLOW_FAIL_KEYWORD in line for line in window_lines)
+        else "success"
+    )
     rag_results = [
         line.strip()
         for line in window_lines
@@ -216,6 +228,9 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "final_prompt": final_prompt,
         "generated_ir": generated_ir,
         "complete_ir": complete_ir,
+        "flow_status": flow_status,
+        "retry_count": len(verifier_failures),
+        "verifier_failures": verifier_failures,
         "missing_sections": missing_sections,
         "parse_errors": parse_errors,
     }

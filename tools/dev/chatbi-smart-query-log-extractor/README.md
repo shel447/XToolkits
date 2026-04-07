@@ -38,8 +38,8 @@ python -m chatbi_smart_query_log_extractor --serve [--log <initial-log-file>] [-
 
 ## Outputs
 
-- `*.json`: 顶层按问题分组的结构化提取结果，调用级结果包含 `ir_table_definition`、`generated_ir`、`complete_ir`
-- `*.html`: 静态排障页面，先按问题分组、再按调用窗口分块展示；适合直接打开查看基本信息
+- `*.json`: 顶层按问题分组的结构化提取结果，调用级结果包含 `thread_id`、`match_id`、`flow_status`、`retry_count`、`verifier_failures`、`ir_table_definition`、`generated_ir`、`complete_ir`
+- `*.html`: 静态排障页面，先按问题分组、再按调用窗口分块展示；问题导航会显示成功/失败图标与重试次数徽标，适合直接打开查看基本信息
 - `--serve` 页面：固定单端口常驻服务页面，可从浏览器选择日志文件或日志目录中的某个文件，再动态解析；交互能力包括 Prompt 执行、完整 IR 执行、双复制入口等
 
 ## Examples
@@ -137,6 +137,8 @@ resulted_sql = to_sql(intent_result)
 - 最终 Prompt 只识别包含 `生成器任务：` 的日志行，并兼容 JSON、Python 对象直接序列化后的单引号消息体，或直接序列化的消息数组；会分别提取前两条 message 的 `content`
 - 页面展示的最终 Prompt 是合并结果，但执行时仍使用原始两条消息一起调用，不会直接把合并后的展示文本当请求体
 - 页面执行接口和完整 IR 执行接口都按 `match_id` 定位，不再使用线程 ID 直接定位
+- 调用结果会额外提取 `verifier result: 0:` 形成 `verifier_failures`，并把出现次数记为 `retry_count`；问题导航只显示时间，但会在成功/失败图标右上角叠加重试次数数字
+- `sql_flow exception: SQL is empty` 只用于判定该次调用最终失败；详情区会用黄色区块展示重试记录，用红色区块展示最终失败时对应的 verifier 失败原因
 - 静态 HTML 适合直接双击打开查看；执行按钮、页面内切换日志文件/目录这类交互能力必须通过 `--serve` 页面使用
 - `IR 表定义` 从 `表定义的IR：` 之后开始提取，不保留关键词前缀
 - `生成 IR 结果` 从 `最终的IR` 之后开始提取，到 `tables = get_tables_columns(table_exprs)` 为止，并保留结束行

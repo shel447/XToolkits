@@ -19,8 +19,7 @@ def render_html(report: dict[str, Any]) -> str:
         match_nav_items = []
         for match in question_group["matches"]:
             anchor_id = f"{question_anchor_id}-match-{match['index']}"
-            nav_label = match["anchor_timestamp"]
-            match_nav_items.append(f'<li><a href="#{anchor_id}">{escape(nav_label)}</a></li>')
+            match_nav_items.append(f"<li>{_render_nav_match_link(anchor_id, match)}</li>")
         nested_nav = f"<ul>{''.join(match_nav_items)}</ul>" if match_nav_items else ""
         nav_items.append(
             f'<li><a href="#{question_anchor_id}">{escape(question_label)}</a>{nested_nav}</li>'
@@ -46,6 +45,11 @@ def render_html(report: dict[str, Any]) -> str:
       --accent: #0f766e;
       --warn-bg: #fff6db;
       --warn-border: #f1c24b;
+      --success-bg: #dff6f0;
+      --success-fg: #0f766e;
+      --danger-bg: #fff0f0;
+      --danger-border: #ef9a9a;
+      --danger-fg: #b42318;
     }}
     body {{
       margin: 0;
@@ -93,6 +97,50 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--accent);
       text-decoration: none;
     }}
+    .nav-match-link {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 0;
+    }}
+    .nav-status {{
+      position: relative;
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }}
+    .nav-status-success {{
+      color: var(--success-fg);
+      background: var(--success-bg);
+    }}
+    .nav-status-failed {{
+      color: var(--danger-fg);
+      background: #ffe3e3;
+    }}
+    .nav-retry-badge {{
+      position: absolute;
+      top: -6px;
+      right: -8px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      background: #ffffff;
+      font-size: 10px;
+      line-height: 14px;
+      text-align: center;
+      box-sizing: border-box;
+    }}
+    .nav-match-time {{
+      color: var(--text);
+    }}
     .matches {{
       display: grid;
       gap: 20px;
@@ -123,6 +171,33 @@ def render_html(report: dict[str, Any]) -> str:
     .section h3 {{
       margin: 0 0 8px;
       font-size: 16px;
+    }}
+    .status-summary {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }}
+    .status-chip {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: #f8fbff;
+    }}
+    .status-chip-success {{
+      color: var(--success-fg);
+      background: var(--success-bg);
+      border-color: #9ad8cb;
+    }}
+    .status-chip-failed {{
+      color: var(--danger-fg);
+      background: #ffe3e3;
+      border-color: #efb0b0;
     }}
     .collapsible {{
       margin-top: 18px;
@@ -264,6 +339,23 @@ def render_html(report: dict[str, Any]) -> str:
     .list {{
       margin: 0;
       padding-left: 20px;
+    }}
+    .highlight-block {{
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+    }}
+    .highlight-block .list {{
+      margin: 0;
+    }}
+    .retry-block {{
+      background: #fff6db;
+      border-color: #f1c24b;
+    }}
+    .failure-block {{
+      background: #fff0f0;
+      border-color: #ef9a9a;
+      color: #8f1d1d;
     }}
     .missing, .errors {{
       padding: 12px 14px;
@@ -480,6 +572,13 @@ def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> st
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     title = f"{match['anchor_timestamp']} | 线程 {match['thread_id']} | 第 {match['index']} 次调用"
     sections = [
+        _render_status_summary(match),
+        _render_highlight_list_section("重试记录", match["verifier_failures"], "retry-block"),
+    ]
+    if match["flow_status"] == "failed":
+        failure_items = match["verifier_failures"] or ["未提取到 verifier 失败原因"]
+        sections.append(_render_highlight_list_section("最终失败原因", failure_items, "failure-block"))
+    sections.extend([
         _render_text_section("命中锚点日志", match["anchor_line"]),
         _render_collapsible_list_section("RAG 检索结果", match["rag_results"]),
         _render_text_section("问题改写", match["rewritten_question"]),
@@ -501,7 +600,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             show_execute=True,
             match_id=match["match_id"],
         ),
-    ]
+    ])
 
     if match["missing_sections"]:
         sections.append(
@@ -519,6 +618,33 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
       <h2>{escape(title)}</h2>
       <div class="meta">线程 ID：{escape(match['thread_id'])}</div>
       {''.join(sections)}
+    </section>
+    """
+
+
+def _render_nav_match_link(anchor_id: str, match: dict[str, Any]) -> str:
+    status = match.get("flow_status", "success")
+    icon = "✓" if status == "success" else "✗"
+    status_class = "nav-status-success" if status == "success" else "nav-status-failed"
+    return (
+        f'<a class="nav-match-link" href="#{escape(anchor_id)}">'
+        f'<span class="nav-status {status_class}">'
+        f'<span class="nav-status-icon">{icon}</span>'
+        f'<span class="nav-retry-badge">{match.get("retry_count", 0)}</span>'
+        f"</span>"
+        f'<span class="nav-match-time">{escape(match["anchor_timestamp"])}</span>'
+        f"</a>"
+    )
+
+
+def _render_status_summary(match: dict[str, Any]) -> str:
+    flow_status = match.get("flow_status", "success")
+    flow_label = "成功" if flow_status == "success" else "失败"
+    status_class = "status-chip-success" if flow_status == "success" else "status-chip-failed"
+    return f"""
+    <section class="status-summary">
+      <span class="status-chip {status_class}">流程状态：{flow_label}</span>
+      <span class="status-chip">重试次数：{match.get("retry_count", 0)}</span>
     </section>
     """
 
@@ -687,6 +813,19 @@ def _render_list_section(title: str, items: list[str], kind: str | None = None) 
     <section class="section">
       <h3>{escape(title)}</h3>
       <ul class="{escape(class_name)}">{rendered_items}</ul>
+    </section>
+    """
+
+
+def _render_highlight_list_section(title: str, items: list[str], block_class: str) -> str:
+    if items:
+        content = f'<ul class="list">{"".join(f"<li>{escape(item)}</li>" for item in items)}</ul>'
+    else:
+        content = "未命中该字段"
+    return f"""
+    <section class="section">
+      <h3>{escape(title)}</h3>
+      <div class="highlight-block {escape(block_class)}">{content}</div>
     </section>
     """
 
