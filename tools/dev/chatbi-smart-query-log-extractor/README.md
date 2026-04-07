@@ -72,12 +72,15 @@ python -m chatbi_smart_query_log_extractor --serve
 
 - 复制 [executors.example.yaml](E:\code\codex_projects\XToolkits\tools\dev\chatbi-smart-query-log-extractor\executors.example.yaml) 为同目录下的 `executors.local.yaml`
 - `executors.local.yaml` 不纳入版本控制，专门保存本机的项目路径、解释器路径和执行命令
+- 执行完整 IR 时，工具会默认把 `project_root` 和 `working_dir` 预置到子进程的 `PYTHONPATH`，用来贴近 PyCharm 里“内容根/源码根”可导入的效果；像 `import src.xxx` 这类项目内导入通常不需要再额外补路径
+- 如果目标项目还依赖额外环境变量，可以在执行器里补 `env` 映射；这些值也支持占位符
 - `run_command` 支持这些占位符：
   - `{python_bin}`
   - `{target_file}`
   - `{project_root}`
   - `{working_dir}`
   - `{target_dir}`
+  - `{pathsep}`
 
 示例：
 
@@ -92,9 +95,17 @@ executors:
     run_command:
       - "{python_bin}"
       - "{target_file}"
+    env:
+      APP_ENV: local
+      # PYTHONPATH: "{project_root}{pathsep}E:/code/codex_projects/your-target-project/extra_src"
     timeout_sec: 60
     result_encoding: utf-8
 ```
+
+如果你在 PyCharm 里手工执行生成文件能跑，但工具执行时报 `No module named 'src'`，优先检查两点：
+
+- `working_dir` 是否与 PyCharm Configuration 的 Working directory 一致
+- 你的项目除了根目录外，是否还依赖额外源码目录；如果有，就在 `env.PYTHONPATH` 里补上
 
 页面执行“完整 IR”时，工具会把 `complete_ir` 写到 `target_dir/<源文件名>`。如果你没有输入文件名，会自动生成 `case_<紧凑时间戳>.py`。执行前会动态把：
 

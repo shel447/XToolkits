@@ -105,27 +105,32 @@ def _build_ir_only_report(complete_ir: str, request_id: str = "823456789012345")
     }
 
 
-def _write_executor_config(config_path: Path, workspace: Path, python_bin: str | None = None) -> None:
+def _write_executor_config(
+    config_path: Path,
+    workspace: Path,
+    python_bin: str | None = None,
+    env: dict[str, str] | None = None,
+) -> None:
     python_path = python_bin or sys.executable
-    config_path.write_text(
-        "\n".join(
-            [
-                "default_executor: demo",
-                "executors:",
-                "  demo:",
-                f"    project_root: {workspace.as_posix()}",
-                f"    working_dir: {workspace.as_posix()}",
-                f"    target_dir: {(workspace / 'generated').as_posix()}",
-                f"    python_bin: {Path(python_path).as_posix()}",
-                "    run_command:",
-                "      - '{python_bin}'",
-                "      - '{target_file}'",
-                "    timeout_sec: 5",
-                "    result_encoding: utf-8",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    lines = [
+        "default_executor: demo",
+        "executors:",
+        "  demo:",
+        f"    project_root: {workspace.as_posix()}",
+        f"    working_dir: {workspace.as_posix()}",
+        f"    target_dir: {(workspace / 'generated').as_posix()}",
+        f"    python_bin: {Path(python_path).as_posix()}",
+        "    run_command:",
+        "      - '{python_bin}'",
+        "      - '{target_file}'",
+        "    timeout_sec: 5",
+        "    result_encoding: utf-8",
+    ]
+    if env:
+        lines.append("    env:")
+        for key, value in env.items():
+            lines.append(f"      {key}: \"{value}\"")
+    config_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 class ExtractorTests(unittest.TestCase):
@@ -411,6 +416,105 @@ class ExtractorTests(unittest.TestCase):
                 self.assertTrue(target_path.is_file())
                 enhanced = target_path.read_text(encoding="utf-8")
                 self.assertIn("resulted_sql = to_sql(intent_result)\nprint(resulted_sql)", enhanced)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_execute_ir_endpoint_can_import_project_modules_like_pycharm(self) -> None:
+        TMP_ROOT.mkdir(exist_ok=True)
+        temp_dir = TMP_ROOT / f"ir-import-run-{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            src_dir = temp_dir / "src"
+            src_dir.mkdir()
+            (src_dir / "__init__.py").write_text("", encoding="utf-8")
+            (src_dir / "helpers.py").write_text(
+                "\n".join(
+                    [
+                        "def build_sql(intent_result):",
+                        "    return f'SQL::{intent_result}::from-src'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            config_path = temp_dir / "executors.local.yaml"
+            _write_executor_config(config_path, temp_dir)
+            report = _build_ir_only_report(
+                "\n".join(
+                    [
+                        "from src.helpers import build_sql",
+                        "",
+                        "def to_sql(intent_result):",
+                        "    return build_sql(intent_result)",
+                        "",
+                        "intent_result = 'ok'",
+                        "resulted_sql = to_sql(intent_result)",
+                    ]
+                ),
+                request_id="833456789012345",
+            )
+            server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                response = requests.post(
+                    f"{server.base_url}/api/execute-ir",
+                    json={"request_id": "833456789012345", "source_filename": "import_case"},
+                    timeout=5,
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertTrue(payload["success"])
+                self.assertEqual(payload["exit_code"], 0)
+                self.assertIn("SQL::ok::from-src", payload["stdout"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_execute_ir_endpoint_applies_custom_environment_variables(self) -> None:
+        TMP_ROOT.mkdir(exist_ok=True)
+        temp_dir = TMP_ROOT / f"ir-env-run-{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        try:
+            config_path = temp_dir / "executors.local.yaml"
+            _write_executor_config(
+                config_path,
+                temp_dir,
+                env={"IR_EXTRA_FLAG": "prefix::{project_root}"},
+            )
+            report = _build_ir_only_report(
+                "\n".join(
+                    [
+                        "import os",
+                        "",
+                        "def to_sql(intent_result):",
+                        "    return os.environ['IR_EXTRA_FLAG']",
+                        "",
+                        "intent_result = 'ok'",
+                        "resulted_sql = to_sql(intent_result)",
+                    ]
+                ),
+                request_id="843456789012345",
+            )
+            server = build_report_server(report, "html", host="127.0.0.1", port=0, config_path=config_path)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                response = requests.post(
+                    f"{server.base_url}/api/execute-ir",
+                    json={"request_id": "843456789012345", "source_filename": "env_case"},
+                    timeout=5,
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertTrue(payload["success"])
+                self.assertIn(f"prefix::{temp_dir}", payload["stdout"])
             finally:
                 server.shutdown()
                 server.server_close()

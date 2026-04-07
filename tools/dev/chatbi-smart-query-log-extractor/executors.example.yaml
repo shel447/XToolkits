@@ -8,5 +8,11 @@ executors:
     run_command:
       - "{python_bin}"
       - "{target_file}"
+    env:
+      # Optional: add extra env vars when your target project depends on
+      # PyCharm-style content roots, custom profiles, or project switches.
+      # project_root and working_dir are already prepended to PYTHONPATH by default.
+      APP_ENV: local
+      # PYTHONPATH: "{project_root}{pathsep}E:/code/codex_projects/your-target-project/extra_src"
     timeout_sec: 60
     result_encoding: utf-8

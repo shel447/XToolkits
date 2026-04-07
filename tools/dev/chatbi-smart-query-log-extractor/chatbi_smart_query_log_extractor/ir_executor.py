@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 import time
@@ -57,8 +58,10 @@ def execute_complete_ir(
         "target_dir": str(target_dir),
         "target_file": str(target_file),
         "python_bin": str(python_bin),
+        "pathsep": os.pathsep,
     }
     run_command = _resolve_run_command(executor, placeholders)
+    execution_env = _resolve_execution_env(executor, placeholders)
 
     start = time.perf_counter()
     lock = _get_executor_lock(f"{Path(config_path or DEFAULT_EXECUTORS_CONFIG).resolve()}::{executor_id}")
@@ -68,6 +71,7 @@ def execute_complete_ir(
             completed = subprocess.run(
                 run_command,
                 cwd=working_dir,
+                env=execution_env,
                 capture_output=True,
                 text=False,
                 timeout=timeout_sec,
@@ -232,8 +236,54 @@ def _resolve_run_command(executor: dict[str, Any], placeholders: dict[str, str])
     for token in raw_command:
         if not isinstance(token, str) or not token:
             raise ExecutorConfigError("executor field 'run_command' must contain non-empty strings")
-        command.append(token.format(**placeholders))
+        command.append(_format_template(token, placeholders, "executor field 'run_command'"))
     return command
+
+
+def _resolve_execution_env(executor: dict[str, Any], placeholders: dict[str, str]) -> dict[str, str]:
+    env = dict(os.environ)
+    raw_env = executor.get("env", {})
+    if raw_env is None:
+        raw_env = {}
+    if not isinstance(raw_env, dict):
+        raise ExecutorConfigError("executor field 'env' must be a mapping if provided")
+
+    custom_pythonpath = ""
+    for key, value in raw_env.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ExecutorConfigError("executor field 'env' must contain non-empty string keys")
+        if not isinstance(value, str):
+            raise ExecutorConfigError("executor field 'env' must contain string values")
+        resolved_key = key.strip()
+        resolved_value = _format_template(value, placeholders, f"executor field 'env.{resolved_key}'")
+        if resolved_key == "PYTHONPATH":
+            custom_pythonpath = resolved_value
+            continue
+        env[resolved_key] = resolved_value
+
+    env["PYTHONPATH"] = _merge_pythonpath(
+        custom_pythonpath,
+        [placeholders["project_root"], placeholders["working_dir"]],
+        env.get("PYTHONPATH", ""),
+    )
+    return env
+
+
+def _merge_pythonpath(custom_value: str, default_entries: list[str], inherited_value: str) -> str:
+    merged: list[str] = []
+    for segment in [custom_value, *default_entries, inherited_value]:
+        for entry in segment.split(os.pathsep):
+            normalized = entry.strip()
+            if normalized and normalized not in merged:
+                merged.append(normalized)
+    return os.pathsep.join(merged)
+
+
+def _format_template(template: str, placeholders: dict[str, str], field_name: str) -> str:
+    try:
+        return template.format(**placeholders)
+    except KeyError as exc:
+        raise ExecutorConfigError(f"{field_name} contains unsupported placeholder: {exc.args[0]}") from exc
 
 
 def _decode_output(raw: bytes | None, encoding: str) -> str:

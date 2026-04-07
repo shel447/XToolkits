@@ -91,4 +91,4 @@ local_config:
   files:
     - executors.example.yaml
     - executors.local.yaml
-  description: Copy the example file to executors.local.yaml and fill in local executor paths for complete_ir execution.
+  description: Copy the example file to executors.local.yaml and fill in local executor paths, working directory, and optional env or PYTHONPATH overrides for complete_ir execution.
