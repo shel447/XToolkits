@@ -58,9 +58,9 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--text);
     }}
     .page {{
-      max-width: 1400px;
+      max-width: 1560px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 14px 16px 18px;
     }}
     .summary, .match, .empty {{
       background: var(--surface);
@@ -69,28 +69,33 @@ def render_html(report: dict[str, Any]) -> str:
       box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
     }}
     .summary {{
-      padding: 24px;
-      margin-bottom: 24px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }}
+    .summary-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px 14px;
     }}
     .layout {{
       display: grid;
       grid-template-columns: 280px 1fr;
-      gap: 20px;
+      gap: 14px;
       align-items: start;
     }}
     .nav {{
       position: sticky;
-      top: 16px;
-      max-height: calc(100vh - 32px);
+      top: 12px;
+      max-height: calc(100vh - 24px);
       overflow-y: auto;
       background: rgba(255, 255, 255, 0.9);
       backdrop-filter: blur(8px);
       border: 1px solid var(--border);
       border-radius: 16px;
-      padding: 18px;
+      padding: 14px;
     }}
     .nav ul {{
-      margin: 12px 0 0;
+      margin: 10px 0 0;
       padding-left: 18px;
     }}
     .nav a {{
@@ -164,27 +169,27 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .matches {{
       display: grid;
-      gap: 20px;
+      gap: 14px;
     }}
     .question-group {{
       display: grid;
       gap: 16px;
-      padding: 22px;
+      padding: 18px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 16px;
       box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
     }}
     .match {{
-      padding: 22px;
+      padding: 18px;
     }}
     .match h2, .summary h1, .question-group h2 {{
-      margin: 0 0 12px;
+      margin: 0 0 10px;
     }}
     .meta {{
       color: var(--muted);
       font-size: 14px;
-      margin-bottom: 16px;
+      margin-bottom: 0;
     }}
     .section {{
       margin-top: 18px;
@@ -403,10 +408,12 @@ def render_html(report: dict[str, Any]) -> str:
   <div class="page">
     <section class="summary">
       <h1>ChatBI 智能问数关键日志提取结果</h1>
-      <div class="meta">日志文件：{source_log}</div>
-      <div class="meta">自动发现问题数：{total_questions}</div>
-      <div class="meta">命中调用总数：{total_matches}</div>
-      <div class="meta">生成时间：{generated_at}</div>
+      <div class="summary-grid">
+        <div class="meta">日志文件：{source_log}</div>
+        <div class="meta">自动发现问题数：{total_questions}</div>
+        <div class="meta">命中调用总数：{total_matches}</div>
+        <div class="meta">生成时间：{generated_at}</div>
+      </div>
     </section>
     <div class="layout">
       <aside class="nav">
