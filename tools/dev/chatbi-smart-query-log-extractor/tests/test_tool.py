@@ -105,6 +105,8 @@ def _build_ir_only_report(
                         "flow_status": "success",
                         "retry_count": 0,
                         "verifier_failures": [],
+                        "associated_thread_ids": [],
+                        "rewrite_questions": [],
                         "missing_sections": [],
                         "parse_errors": [],
                     }
@@ -304,6 +306,40 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(second_group["matches"][0]["retry_count"], 0)
         self.assertEqual(second_group["matches"][0]["verifier_failures"], [])
 
+    def test_extract_report_groups_child_threads_from_call_sqlflow_input_chain(self) -> None:
+        report = extract_report((FIXTURES_ROOT / "cross_thread_chatbi.log").read_text(encoding="utf-8"), "cross_thread_chatbi.log")
+
+        self.assertEqual(report["total_questions"], 1)
+        first_group = report["questions"][0]
+        self.assertEqual(first_group["question"], QUESTION)
+        self.assertEqual(first_group["total_matches"], 2)
+
+        first = first_group["matches"][0]
+        self.assertEqual(first["thread_id"], "101010101010101")
+        self.assertEqual(first["match_id"], _build_match_id("101010101010101", 2))
+        self.assertEqual(first["associated_thread_ids"], ["202020202020202", "303030303030303"])
+        self.assertEqual(first["rewrite_questions"], ["请帮我统计最近7天销售额", "最近7天各门店销售额是多少"])
+        self.assertEqual(first["rewritten_question"], "请帮我统计最近7天销售额")
+        self.assertEqual(first["flow_status"], "success")
+        self.assertEqual(first["retry_count"], 1)
+        self.assertEqual(first["verifier_failures"], ["child verifier failure"])
+        self.assertEqual(len(first["rag_results"]), 2)
+        self.assertTrue(any("child_doc_1" in line for line in first["rag_results"]))
+        self.assertTrue(any("grand_doc" in line for line in first["rag_results"]))
+        self.assertEqual(first["recalled_tables"], ["grand_sales"])
+        self.assertEqual(first["final_prompt"]["combined"], "grand system\n\ngrand user")
+        self.assertIn("class GrandIR:", first["generated_ir"])
+        self.assertIn("table grand_sales(shop_id, amount)", first["ir_table_definition"])
+
+        second = first_group["matches"][1]
+        self.assertEqual(second["thread_id"], "101010101010101")
+        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 23))
+        self.assertEqual(second["associated_thread_ids"], ["404040404040404"])
+        self.assertEqual(second["rewrite_questions"], ["请帮我统计最近7天销售额"])
+        self.assertEqual(second["flow_status"], "failed")
+        self.assertEqual(second["retry_count"], 1)
+        self.assertEqual(second["verifier_failures"], ["second call child failure"])
+
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")
 
@@ -397,6 +433,14 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('href="#question-1-match-1"', html)
         self.assertIn('href="#question-1-match-2"', html)
         self.assertNotIn('href="#question-1-match-1">111111111111111</a>', html)
+
+    def test_render_html_shows_associated_threads_for_cross_thread_call(self) -> None:
+        report = extract_report((FIXTURES_ROOT / "cross_thread_chatbi.log").read_text(encoding="utf-8"), "cross_thread_chatbi.log")
+        html = render_html(report)
+
+        self.assertIn("关联线程：202020202020202, 303030303030303", html)
+        self.assertIn("关联线程：404040404040404", html)
+        self.assertIn("线程 ID：101010101010101", html)
 
     def test_execute_prompt_endpoint_uses_original_two_message_payload(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter=QUESTION)

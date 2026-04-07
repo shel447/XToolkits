@@ -625,6 +625,10 @@ def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> st
 
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     title = f"{match['anchor_timestamp']} | 线程 {match['thread_id']} | 第 {match['index']} 次调用"
+    associated_threads = match.get("associated_thread_ids", [])
+    associated_threads_meta = ""
+    if associated_threads:
+        associated_threads_meta = f'<div class="meta">关联线程：{escape(", ".join(associated_threads))}</div>'
     sections = [
         _render_status_summary(match),
         _render_highlight_list_section("重试记录", match["verifier_failures"], "retry-block"),
@@ -671,6 +675,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     <section id="{escape(anchor_id)}" class="match">
       <h2>{escape(title)}</h2>
       <div class="meta">线程 ID：{escape(match['thread_id'])}</div>
+      {associated_threads_meta}
       {''.join(sections)}
     </section>
     """
