@@ -244,6 +244,10 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .execute-output {{
       margin-top: 12px;
+      border: 1px solid #cfe5d7;
+      background: #f5fbf7;
+      color: #214236;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }}
     pre {{
       margin: 0;
