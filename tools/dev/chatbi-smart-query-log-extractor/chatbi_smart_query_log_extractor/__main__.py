@@ -13,7 +13,7 @@ from .interactive_server import serve_report
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="提取 ChatBI 智能问数关键日志并生成 HTML/JSON 结果。")
-    parser.add_argument("--log", required=True, help="日志文件路径")
+    parser.add_argument("--log", help="日志文件路径；未提供时，仅可配合 --serve 启动空白日志浏览服务")
     parser.add_argument("--question", help="可选：只提取该精确问题对应的日志链路；未提供时自动发现全部问题")
     parser.add_argument("--output-dir", default="output", help="输出目录，默认是当前目录下的 output/")
     parser.add_argument("--encoding", help="显式指定日志编码；未指定时自动尝试 UTF-8/GBK")
@@ -36,16 +36,26 @@ def main(argv: list[str] | None = None) -> int:
             print("question 不能为空", file=sys.stderr)
             return 2
 
-    log_path = Path(args.log)
-    if not log_path.is_file():
-        print(f"日志文件不存在: {log_path}", file=sys.stderr)
-        return 2
-
     if args.json_only and args.html_only:
         print("--json-only 与 --html-only 不能同时使用", file=sys.stderr)
         return 2
     if args.port < 0 or args.port > 65535:
         print("--port 必须在 0 到 65535 之间", file=sys.stderr)
+        return 2
+    if args.log is None and not args.serve:
+        print("--log 是必填项，除非使用 --serve 启动空白日志浏览服务", file=sys.stderr)
+        return 2
+
+    if args.log is None:
+        try:
+            serve_report(None, "", host=args.host, port=args.port)
+        except KeyboardInterrupt:
+            print("\n交互服务已停止", file=sys.stderr)
+        return 0
+
+    log_path = Path(args.log)
+    if not log_path.is_file():
+        print(f"日志文件不存在: {log_path}", file=sys.stderr)
         return 2
 
     try:

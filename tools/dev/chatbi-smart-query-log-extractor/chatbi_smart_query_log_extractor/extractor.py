@@ -28,18 +28,22 @@ IR_RESULT_STOP = "tables = get_tables_columns(table_exprs)"
 
 def read_log_text(log_path: str | Path, encoding: str | None = None) -> str:
     path = Path(log_path)
+    return decode_log_bytes(path.read_bytes(), encoding=encoding)
+
+
+def decode_log_bytes(raw: bytes, encoding: str | None = None) -> str:
     candidates = [encoding] if encoding else ["utf-8", "utf-8-sig", "gbk", "gb18030"]
     last_error: UnicodeDecodeError | None = None
     for candidate in candidates:
         if candidate is None:
             continue
         try:
-            return path.read_text(encoding=candidate)
+            return raw.decode(candidate)
         except UnicodeDecodeError as exc:
             last_error = exc
     if last_error is not None:
         raise last_error
-    return path.read_text()
+    return raw.decode()
 
 
 def extract_report(

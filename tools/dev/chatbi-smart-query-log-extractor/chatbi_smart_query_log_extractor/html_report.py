@@ -352,7 +352,7 @@ def render_html(report: dict[str, Any]) -> str:
       output.hidden = false;
       output.textContent = '执行中...';
       try {{
-        const response = await fetch('./api/execute-prompt', {{
+        const response = await fetch('/api/execute-prompt', {{
           method: 'POST',
           headers: {{ 'Content-Type': 'application/json' }},
           body: JSON.stringify({{ request_id: requestId }}),
@@ -430,7 +430,7 @@ def render_html(report: dict[str, Any]) -> str:
       output.hidden = false;
       output.textContent = '执行中...';
       try {{
-        const response = await fetch('./api/execute-ir', {{
+        const response = await fetch('/api/execute-ir', {{
           method: 'POST',
           headers: {{ 'Content-Type': 'application/json' }},
           body: JSON.stringify({{

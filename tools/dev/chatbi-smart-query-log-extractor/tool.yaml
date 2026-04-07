@@ -24,8 +24,8 @@ interface:
   command: python -m chatbi_smart_query_log_extractor
   args:
     - name: log
-      required: true
-      description: Path to the ChatBI plain-text log file.
+      required: false
+      description: Path to the ChatBI plain-text log file. Required for static output mode; optional when --serve starts the browser-based log viewer.
     - name: question
       required: false
       description: Optional exact question filter. When omitted, the tool auto-discovers all unique questions from sql_template_match anchor logs.
@@ -43,7 +43,7 @@ interface:
       description: Generate only the HTML result.
     - name: serve
       required: false
-      description: Start a local interactive report server so the HTML page can execute the extracted final prompt.
+      description: Start a fixed-port local interactive server that can parse logs from the browser page and execute prompt or complete_ir actions.
     - name: host
       required: false
       description: Host address for the local interactive report server. Default is 127.0.0.1.
@@ -77,13 +77,16 @@ interface:
     - writes JSON and HTML report files
     - can start a local HTTP server and call a fake /chat/completion endpoint with requests verify=False
     - can write complete_ir into a configured target project directory and execute it via a local command
+    - in --serve mode keeps the currently parsed report in memory and lets the page switch logs without changing port
   examples:
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output
       description: Auto-discover all unique questions from the log and generate grouped JSON and HTML outputs.
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --question "近7天销售额是多少" --output-dir .\output
       description: Extract only one exact question group from the discovered questions and generate both output formats.
     - command: python -m chatbi_smart_query_log_extractor --log .\chatbi.log --output-dir .\output --serve
-      description: Generate files, start a local report server, and enable the Final Prompt execute button in the HTML page.
+      description: Generate files, start a fixed-port report server, preload one report, and allow switching to other logs from the browser page.
+    - command: python -m chatbi_smart_query_log_extractor --serve
+      description: Start an empty browser-based log viewer that can select a log file or directory and parse files without pre-generating outputs.
 local_config:
   files:
     - executors.example.yaml

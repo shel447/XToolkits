@@ -6,6 +6,7 @@ import sys
 import threading
 import unittest
 import uuid
+from unittest import mock
 from pathlib import Path
 
 import requests
@@ -313,6 +314,57 @@ class ExtractorTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=5)
 
+    def test_service_page_supports_file_and_directory_selection(self) -> None:
+        server = build_report_server(None, None, host="127.0.0.1", port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            response = requests.get(f"{server.base_url}/", timeout=5)
+            self.assertEqual(response.status_code, 200)
+            html = response.text
+            self.assertIn('id="log-file-input"', html)
+            self.assertIn('id="log-directory-input"', html)
+            self.assertIn("webkitdirectory", html)
+            self.assertIn('id="selected-files"', html)
+            self.assertIn('id="report-frame"', html)
+            self.assertIn("/api/report", html)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def test_report_upload_endpoint_parses_selected_log_and_updates_current_report(self) -> None:
+        server = build_report_server(None, None, host="127.0.0.1", port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            payload = {
+                "source_name": "uploaded.log",
+                "content_base64": __import__("base64").b64encode(FULL_LOG.encode("utf-8")).decode("ascii"),
+            }
+            parse_response = requests.post(f"{server.base_url}/api/report", json=payload, timeout=5)
+            self.assertEqual(parse_response.status_code, 200)
+            parse_payload = parse_response.json()
+            self.assertEqual(parse_payload["source_log"], "uploaded.log")
+            self.assertEqual(parse_payload["total_questions"], 1)
+            self.assertIn("/report/current", parse_payload["report_url"])
+
+            report_response = requests.get(f"{server.base_url}/report/current", timeout=5)
+            self.assertEqual(report_response.status_code, 200)
+            self.assertIn("近7天销售额是多少", report_response.text)
+
+            execute_response = requests.post(
+                f"{server.base_url}/api/execute-prompt",
+                json={"request_id": "123456789012345"},
+                timeout=5,
+            )
+            self.assertEqual(execute_response.status_code, 200)
+            self.assertIn("FAKE RESPONSE", execute_response.json()["choices"][0]["message"]["content"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
     def test_execute_ir_endpoint_writes_enhanced_source_and_returns_stdout(self) -> None:
         TMP_ROOT.mkdir(exist_ok=True)
         temp_dir = TMP_ROOT / f"ir-run-{uuid.uuid4().hex}"
@@ -482,6 +534,17 @@ class ExtractorTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    @mock.patch("chatbi_smart_query_log_extractor.__main__.serve_report")
+    def test_main_can_start_empty_service_without_log(self, mock_serve_report: mock.Mock) -> None:
+        exit_code = main(["--serve"])
+        self.assertEqual(exit_code, 0)
+        mock_serve_report.assert_called_once()
+        args, kwargs = mock_serve_report.call_args
+        self.assertIsNone(args[0])
+        self.assertEqual(args[1], "")
+        self.assertEqual(kwargs["host"], "127.0.0.1")
+        self.assertEqual(kwargs["port"], 8000)
+
     def test_main_returns_no_match_exit_code(self) -> None:
         TMP_ROOT.mkdir(exist_ok=True)
         temp_dir = TMP_ROOT / f"run-{uuid.uuid4().hex}"
