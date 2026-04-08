@@ -113,20 +113,18 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
                 }
 
         if MARK_QUESTION_KEYWORD in line:
-            mark_question = _extract_after_keyword(line, MARK_QUESTION_KEYWORD)
-            if mark_question:
-                existing_match_id = thread_to_match_id.get(thread_id)
-                if existing_match_id is None:
-                    match_id = _find_open_match_by_rewrite_question(
-                        ordered_match_ids,
-                        raw_matches_by_id,
-                        mark_question,
-                    )
-                    if match_id is not None:
-                        raw_match = raw_matches_by_id[match_id]
-                        if raw_match["thread_id"] != thread_id:
-                            _associate_thread_to_match(raw_match, thread_id, line_number)
-                            thread_to_match_id[thread_id] = match_id
+            existing_match_id = thread_to_match_id.get(thread_id)
+            if existing_match_id is None:
+                match_id = _find_open_match_by_mark_question_line(
+                    ordered_match_ids,
+                    raw_matches_by_id,
+                    line,
+                )
+                if match_id is not None:
+                    raw_match = raw_matches_by_id[match_id]
+                    if raw_match["thread_id"] != thread_id:
+                        _associate_thread_to_match(raw_match, thread_id, line_number)
+                        thread_to_match_id[thread_id] = match_id
 
         if CALL_SQLFLOW_INPUT_KEYWORD not in line:
             continue
@@ -270,18 +268,23 @@ def _associate_thread_to_match(raw_match: dict[str, Any], thread_id: str, line_n
     )
 
 
-def _find_open_match_by_rewrite_question(
+def _find_open_match_by_mark_question_line(
     ordered_match_ids: list[str],
     raw_matches_by_id: dict[str, dict[str, Any]],
-    query: str,
+    line: str,
 ) -> str | None:
     for match_id in reversed(ordered_match_ids):
         raw_match = raw_matches_by_id[match_id]
         if raw_match["end_line_number"] is not None:
             continue
-        if query in raw_match["rewrite_questions"]:
-            return match_id
+        for rewrite_question in raw_match["rewrite_questions"]:
+            if _build_mark_question_marker(rewrite_question) in line:
+                return match_id
     return None
+
+
+def _build_mark_question_marker(question: str) -> str:
+    return f"{MARK_QUESTION_KEYWORD} {question}".strip()
 
 
 def _select_match_questions(matches: list[dict[str, Any]], question_filter: str | None) -> list[str]:

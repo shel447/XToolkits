@@ -1,6 +1,6 @@
 id: chatbi-smart-query-log-extractor
 name: ChatBI Smart Query Log Extractor
-summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, keep sql_template_match as the stable call anchor and match_id source, use call sqlflow input for root-call boundaries and child-thread MARK QUESTION logs for cross-thread attribution, extract retry and failure status, and render JSON and HTML outputs.
+summary: Auto-discover unique ChatBI smart-query questions from sql_template_match logs, keep sql_template_match as the stable call anchor and match_id source, use call sqlflow input for root-call boundaries and full child-thread MARK QUESTION markers to attribute cross-thread activity, extract retry and failure status, and render JSON and HTML outputs.
 type: script
 scope: shared
 category: dev
@@ -28,7 +28,7 @@ interface:
       description: Path to the ChatBI plain-text log file. Required for static output mode; optional when --serve starts the browser-based log viewer.
     - name: question
       required: false
-      description: Optional exact question filter. When omitted, the tool auto-discovers all unique questions from sql_template_match anchor logs, uses call sqlflow input to split root calls, and uses child-thread MARK QUESTION logs to group child-thread activity back into the matching root call.
+      description: Optional exact question filter. When omitted, the tool auto-discovers all unique questions from sql_template_match anchor logs, uses call sqlflow input to split root calls, and uses full child-thread MARK QUESTION markers to group child-thread activity back into the matching root call.
     - name: output-dir
       required: false
       description: Directory for generated JSON and HTML outputs.
