@@ -358,6 +358,13 @@ def render_html(report: dict[str, Any]) -> str:
       overflow: auto;
       padding: 12px;
       box-sizing: border-box;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }}
+    .content-panel-body::-webkit-scrollbar {{
+      width: 0;
+      height: 0;
+      display: none;
     }}
     .detail-column {{
       display: grid;
@@ -1350,6 +1357,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     function setActiveContentTab(tabKey = 'flow') {{
       const flowVisible = detailFieldVisibility.flow_diagram !== false;
+      const currentMatchAnchor = getActiveMatchAnchorFromViewport();
       const normalized = tabKey === 'details' ? 'details' : 'flow';
       activeContentTab = !flowVisible && normalized === 'flow' ? 'details' : normalized;
       document.querySelectorAll('.content-tab[data-tab-key]').forEach((button) => {{
@@ -1362,7 +1370,10 @@ def render_html(report: dict[str, Any]) -> str:
         const key = panel.getAttribute('data-tab-panel');
         panel.hidden = key !== activeContentTab || (key === 'flow' && !flowVisible);
       }});
-      if (activeContentTab === 'details') {{
+      if (activeContentTab === 'details' && currentMatchAnchor) {{
+        scrollDetailsToAnchor(currentMatchAnchor);
+        syncActivePanels();
+      }} else if (activeContentTab === 'details') {{
         syncActivePanels();
       }}
     }}
