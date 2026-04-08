@@ -1,6 +1,7 @@
 2026-04-05 09:00:00.001 [INFO] [101010101010101] sql_template_match hit query: 近7天销售额是多少
 2026-04-05 09:00:00.010 [INFO] [101010101010101] call sqlflow input: 请帮我统计最近7天销售额
-2026-04-05 09:00:00.020 [INFO] [202020202020202] sql_template_match hit query: 请帮我统计最近7天销售额
+2026-04-05 09:00:00.018 [INFO] [202020202020202] MARK QUESTION: 请帮我统计最近7天销售额
+2026-04-05 09:00:00.020 [INFO] [202020202020202] sql_template_match hit query: 近7天销售额是多少
 2026-04-05 09:00:00.025 [INFO] [202020202020202] knowledge retriever success retrieved docs: child_doc_1
 2026-04-05 09:00:00.030 [INFO] [202020202020202] 表定义的IR：table child_sales(id, amount)
 field child_metric
@@ -8,7 +9,8 @@ field child_metric
 2026-04-05 09:00:00.040 [INFO] [202020202020202] 生成器任务：{'messages': [{'role': 'system', 'content': 'child system'}, {'role': 'user', 'content': 'child user'}]}
 2026-04-05 09:00:00.045 [WARN] [202020202020202] verifier result: 0: child verifier failure
 2026-04-05 09:00:00.050 [INFO] [202020202020202] call sqlflow input: 最近7天各门店销售额是多少
-2026-04-05 09:00:00.060 [INFO] [303030303030303] sql_template_match hit query: 最近7天各门店销售额是多少
+2026-04-05 09:00:00.058 [INFO] [303030303030303] MARK QUESTION: 最近7天各门店销售额是多少
+2026-04-05 09:00:00.060 [INFO] [303030303030303] sql_template_match hit query: 近7天销售额是多少
 2026-04-05 09:00:00.070 [INFO] [303030303030303] knowledge retriever success retrieved docs: grand_doc
 2026-04-05 09:00:00.080 [INFO] [303030303030303] 召回表: grand_sales
 2026-04-05 09:00:00.090 [INFO] [303030303030303] 表定义的IR：table grand_sales(shop_id, amount)
@@ -21,6 +23,7 @@ class GrandIR:
 tables = get_tables_columns(table_exprs)
 2026-04-05 09:05:00.001 [INFO] [101010101010101] sql_template_match hit query: 近7天销售额是多少
 2026-04-05 09:05:00.010 [INFO] [101010101010101] call sqlflow input: 请帮我统计最近7天销售额
-2026-04-05 09:05:00.020 [INFO] [404040404040404] sql_template_match hit query: 请帮我统计最近7天销售额
+2026-04-05 09:05:00.018 [INFO] [404040404040404] MARK QUESTION: 请帮我统计最近7天销售额
+2026-04-05 09:05:00.020 [INFO] [404040404040404] sql_template_match hit query: 近7天销售额是多少
 2026-04-05 09:05:00.030 [WARN] [404040404040404] verifier result: 0: second call child failure
 2026-04-05 09:05:00.040 [ERROR] [404040404040404] sql_flow exception: SQL is empty

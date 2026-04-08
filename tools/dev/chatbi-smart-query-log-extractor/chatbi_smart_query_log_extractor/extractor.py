@@ -25,6 +25,7 @@ PROMPT_KEYWORD = "生成器任务："
 IR_RESULT_START = "最终的IR"
 IR_RESULT_STOP = "tables = get_tables_columns(table_exprs)"
 CALL_SQLFLOW_INPUT_KEYWORD = "call sqlflow input:"
+MARK_QUESTION_KEYWORD = "MARK QUESTION:"
 VERIFIER_FAIL_KEYWORD = "verifier result: 0:"
 FLOW_FAIL_KEYWORD = "sql_flow exception: SQL is empty"
 
@@ -110,12 +111,16 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
                     "anchor_line": line,
                     "line_number": line_number,
                 }
+
+        if MARK_QUESTION_KEYWORD in line:
+            mark_question = _extract_after_keyword(line, MARK_QUESTION_KEYWORD)
+            if mark_question:
                 existing_match_id = thread_to_match_id.get(thread_id)
                 if existing_match_id is None:
                     match_id = _find_open_match_by_rewrite_question(
                         ordered_match_ids,
                         raw_matches_by_id,
-                        anchor_question,
+                        mark_question,
                     )
                     if match_id is not None:
                         raw_match = raw_matches_by_id[match_id]

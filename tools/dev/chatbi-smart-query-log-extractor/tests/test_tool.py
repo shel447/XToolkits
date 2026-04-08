@@ -335,7 +335,7 @@ class ExtractorTests(unittest.TestCase):
 
         second = first_group["matches"][1]
         self.assertEqual(second["thread_id"], "101010101010101")
-        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 22))
+        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 24))
         self.assertEqual(second["anchor_timestamp"], "2026-04-05 09:05:00.001")
         self.assertIn("sql_template_match hit query: 近7天销售额是多少", second["anchor_line"])
         self.assertEqual(second["associated_thread_ids"], ["404040404040404"])
