@@ -56,7 +56,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     nav_html = "".join(nav_items) if nav_items else "<li>未发现任何问题</li>"
     details_html = "".join(detail_sections) if detail_sections else "<section class=\"empty\">未发现任何问题。</section>"
-    flow_sidebar_html = _render_flow_sidebar("".join(flow_views), active_flow_anchor)
+    flow_stage_html = _render_flow_stage("".join(flow_views), active_flow_anchor)
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -186,12 +186,12 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: 280px minmax(0, 1fr) 396px;
+      grid-template-columns: 260px minmax(420px, 1.2fr) minmax(360px, 0.95fr);
       gap: 12px;
       align-items: start;
     }}
     .layout.layout-flow-hidden {{
-      grid-template-columns: 280px minmax(0, 1fr);
+      grid-template-columns: 260px minmax(0, 1fr);
     }}
     .nav {{
       position: sticky;
@@ -295,21 +295,21 @@ def render_html(report: dict[str, Any]) -> str:
     .nav-match-time {{
       color: var(--text);
     }}
-    .matches {{
+    .detail-column {{
       display: grid;
       gap: 14px;
       min-width: 0;
     }}
-    .flow-sidebar {{
+    .flow-stage {{
       position: sticky;
       top: 12px;
       max-height: calc(100vh - 24px);
       min-width: 0;
     }}
-    .flow-sidebar[hidden] {{
+    .flow-stage[hidden] {{
       display: none;
     }}
-    .flow-sidebar-shell {{
+    .flow-stage-shell {{
       display: grid;
       grid-template-rows: auto 1fr;
       min-height: calc(100vh - 24px);
@@ -319,23 +319,23 @@ def render_html(report: dict[str, Any]) -> str:
       box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
       overflow: hidden;
     }}
-    .flow-sidebar-header {{
+    .flow-stage-header {{
       padding: 14px 16px 12px;
       border-bottom: 1px solid #e3eaf4;
       background: linear-gradient(180deg, #fdfefe 0%, #f3f8ff 100%);
     }}
-    .flow-sidebar-header h2 {{
+    .flow-stage-header h2 {{
       margin: 0;
       font-size: 16px;
       color: #1f3048;
     }}
-    .flow-sidebar-subtitle {{
+    .flow-stage-subtitle {{
       margin-top: 6px;
       color: #607086;
       font-size: 12px;
       line-height: 1.45;
     }}
-    .flow-sidebar-body {{
+    .flow-stage-body {{
       position: relative;
       padding: 12px;
       overflow: auto;
@@ -361,13 +361,28 @@ def render_html(report: dict[str, Any]) -> str:
       border: 1px solid #d9e2ef;
       border-radius: 16px;
       background: #ffffff;
-      padding: 10px 8px;
+      padding: 10px 8px 16px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }}
     .flow-svg {{
       display: block;
       width: 100%;
       height: auto;
+    }}
+    .flow-svg .flow-edge-label {{
+      pointer-events: none;
+    }}
+    .flow-svg .flow-edge-label-bg {{
+      fill: rgba(255, 255, 255, 0.98);
+      stroke: #d4dce8;
+      stroke-width: 1;
+    }}
+    .flow-svg .flow-edge-label-text {{
+      fill: #41566f;
+      font-size: 11px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: middle;
     }}
     .flow-svg .flow-node-shape {{
       stroke-width: 1.5;
@@ -393,7 +408,24 @@ def render_html(report: dict[str, Any]) -> str:
       stroke: #99a8bb;
       stroke-width: 1.6;
       fill: none;
-      marker-end: url(#flow-arrow-head);
+    }}
+    .flow-svg .flow-connector-loop {{
+      stroke-dasharray: 6 5;
+    }}
+    .flow-svg .flow-connector-unknown {{
+      stroke: #c7d0dc;
+    }}
+    .flow-svg .flow-connector-success {{
+      stroke: #52b694;
+    }}
+    .flow-svg .flow-connector-failed {{
+      stroke: #cf5d5d;
+    }}
+    .flow-svg .flow-connector-reject {{
+      stroke: #d6a640;
+    }}
+    .flow-svg .flow-connector-follow-up {{
+      stroke: #6b9bf0;
     }}
     .flow-svg .flow-node-hitbox {{
       fill: transparent;
@@ -814,10 +846,12 @@ def render_html(report: dict[str, Any]) -> str:
         max-height: none;
         overflow-y: visible;
       }}
-      .flow-sidebar {{
+      .flow-stage {{
         position: static;
         max-height: none;
-        order: -1;
+      }}
+      .detail-column {{
+        order: 2;
       }}
       .settings-fab {{
         right: 10px;
@@ -849,8 +883,8 @@ def render_html(report: dict[str, Any]) -> str:
         <strong>问题导航</strong>
         <ul>{nav_html}</ul>
       </aside>
-      <main class="matches">{details_html}</main>
-      {flow_sidebar_html}
+      {flow_stage_html}
+      <main class="detail-column">{details_html}</main>
     </div>
   </div>
   <button type="button" id="settings-toggle" class="settings-fab" aria-controls="settings-panel" aria-expanded="false">设置</button>
@@ -1084,16 +1118,16 @@ def render_html(report: dict[str, Any]) -> str:
         block.classList.toggle('config-hidden', !visible);
       }});
       const layout = document.querySelector('.layout');
-      const flowSidebar = document.getElementById('flow-sidebar');
+      const flowStage = document.getElementById('flow-stage');
       const flowVisible = detailFieldVisibility.flow_diagram !== false;
       if (layout) {{
         layout.classList.toggle('layout-flow-hidden', !flowVisible);
       }}
-      if (flowSidebar) {{
+      if (flowStage) {{
         if (flowVisible) {{
-          flowSidebar.removeAttribute('hidden');
+          flowStage.removeAttribute('hidden');
         }} else {{
-          flowSidebar.setAttribute('hidden', '');
+          flowStage.setAttribute('hidden', '');
         }}
       }}
     }}
@@ -1196,8 +1230,8 @@ def render_html(report: dict[str, Any]) -> str:
       const popup = document.getElementById('flow-tooltip-popup');
       const title = document.getElementById('flow-tooltip-title');
       const content = document.getElementById('flow-tooltip-content');
-      const sidebarBody = document.getElementById('flow-sidebar-body');
-      if (!popup || !title || !content || !sidebarBody || !node) {{
+      const stageBody = document.getElementById('flow-stage-body');
+      if (!popup || !title || !content || !stageBody || !node) {{
         return;
       }}
       closeOpenFlowTooltips();
@@ -1206,9 +1240,9 @@ def render_html(report: dict[str, Any]) -> str:
       content.textContent = node.getAttribute('data-node-summary') || '';
       popup.removeAttribute('hidden');
 
-      const bodyRect = sidebarBody.getBoundingClientRect();
+      const bodyRect = stageBody.getBoundingClientRect();
       const nodeRect = node.getBoundingClientRect();
-      const top = nodeRect.top - bodyRect.top + sidebarBody.scrollTop + Math.min(24, nodeRect.height / 2);
+      const top = nodeRect.top - bodyRect.top + stageBody.scrollTop + Math.min(24, nodeRect.height / 2);
       const left = Math.max(8, Math.min(bodyRect.width - popup.offsetWidth - 8, nodeRect.right - bodyRect.left + 8));
       popup.style.top = `${{top}}px`;
       popup.style.left = `${{left}}px`;
@@ -1310,11 +1344,12 @@ def render_html(report: dict[str, Any]) -> str:
 
     function setActiveFlowView(anchorId = '') {{
       const resolvedAnchorId = resolveMatchAnchor(anchorId) || getActiveMatchAnchorFromViewport();
-      const flowSidebar = document.getElementById('flow-sidebar');
-      if (!flowSidebar || !resolvedAnchorId) {{
+      const flowStage = document.getElementById('flow-stage');
+      const flowStageBody = document.getElementById('flow-stage-body');
+      if (!flowStage || !resolvedAnchorId) {{
         return;
       }}
-      flowSidebar.setAttribute('data-active-match-anchor', resolvedAnchorId);
+      flowStage.setAttribute('data-active-match-anchor', resolvedAnchorId);
       document.querySelectorAll('.flow-view[data-flow-match-anchor]').forEach((view) => {{
         const matches = view.getAttribute('data-flow-match-anchor') === resolvedAnchorId;
         if (matches) {{
@@ -1323,6 +1358,9 @@ def render_html(report: dict[str, Any]) -> str:
           view.setAttribute('hidden', '');
         }}
       }});
+      if (flowStageBody) {{
+        flowStageBody.scrollTop = 0;
+      }}
       closeOpenFlowTooltips();
     }}
 
@@ -1459,19 +1497,19 @@ def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> st
     """
 
 
-def _render_flow_sidebar(flow_views_html: str, active_flow_anchor: str) -> str:
+def _render_flow_stage(flow_views_html: str, active_flow_anchor: str) -> str:
     if not flow_views_html:
         return """
-        <aside id="flow-sidebar" class="flow-sidebar" hidden></aside>
+        <section id="flow-stage" class="flow-stage" hidden></section>
         """
     return f"""
-    <aside id="flow-sidebar" class="flow-sidebar" data-active-match-anchor="{escape(active_flow_anchor)}">
-      <section class="flow-sidebar-shell">
-        <div class="flow-sidebar-header">
+    <section id="flow-stage" class="flow-stage" data-active-match-anchor="{escape(active_flow_anchor)}">
+      <section class="flow-stage-shell">
+        <div class="flow-stage-header">
           <h2>当前调用流程</h2>
-          <div class="flow-sidebar-subtitle">正式流程图固定显示在右侧，随当前进入视口的调用自动切换。</div>
+          <div class="flow-stage-subtitle">滚动查看完整流程图，随当前进入视口的调用自动切换。</div>
         </div>
-        <div id="flow-sidebar-body" class="flow-sidebar-body">
+        <div id="flow-stage-body" class="flow-stage-body">
           {flow_views_html}
           <div id="flow-tooltip-popup" class="flow-tooltip-popup" hidden>
             <div id="flow-tooltip-title" class="flow-tooltip-title"></div>
@@ -1479,14 +1517,14 @@ def _render_flow_sidebar(flow_views_html: str, active_flow_anchor: str) -> str:
           </div>
         </div>
       </section>
-    </aside>
+    </section>
     """
 
 
 def _render_flow_view(anchor_id: str, match: dict[str, Any], active: bool) -> str:
     nodes = _build_flow_nodes(match)
     hidden_attr = "" if active else " hidden"
-    svg = _render_flow_svg(anchor_id, nodes)
+    svg = _render_flow_svg(anchor_id, match, nodes)
     title = f"{match['anchor_timestamp']} | 第 {match['index']} 次调用"
     return f"""
     <section class="flow-view" data-flow-match-anchor="{escape(anchor_id)}"{hidden_attr}>
@@ -1498,22 +1536,23 @@ def _render_flow_view(anchor_id: str, match: dict[str, Any], active: bool) -> st
     """
 
 
-def _render_flow_svg(anchor_id: str, nodes: list[dict[str, str]]) -> str:
-    center_x = 180
-    width = 360
-    top_padding = 28
-    step = 102
-    height = top_padding * 2 + step * (len(nodes) - 1) + 70
+def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str, str]]) -> str:
+    center_x = 372
+    width = 760
+    top_padding = 64
+    step = 122
+    height = top_padding * 2 + step * (len(nodes) - 1) + 120
+    positions = {
+        node["key"]: {"cx": center_x, "cy": top_padding + index * step}
+        for index, node in enumerate(nodes)
+    }
     node_parts = []
     connector_parts = []
+    node_lookup = {node["key"]: node for node in nodes}
 
-    for index, node in enumerate(nodes):
-        y = top_padding + index * step
-        if index < len(nodes) - 1:
-            connector_parts.append(
-                f'<path class="flow-connector-line" d="M {center_x} {y + 32} L {center_x} {y + step - 42}" />'
-            )
-        node_parts.append(_render_svg_flow_node(anchor_id, node, center_x, y))
+    connector_parts.extend(_render_flow_connectors(anchor_id, match, nodes, positions, node_lookup))
+    for node in nodes:
+        node_parts.append(_render_svg_flow_node(anchor_id, node, positions[node["key"]]["cx"], positions[node["key"]]["cy"]))
 
     return f"""
     <svg class="flow-svg" viewBox="0 0 {width} {height}" role="img" aria-label="调用流程图">
@@ -1528,25 +1567,30 @@ def _render_flow_svg(anchor_id: str, nodes: list[dict[str, str]]) -> str:
     """
 
 
-def _render_svg_flow_node(anchor_id: str, node: dict[str, str], center_x: int, top_y: int) -> str:
+def _render_svg_flow_node(anchor_id: str, node: dict[str, str], center_x: int, center_y: int) -> str:
     node_id = f"flow-node-{anchor_id}-{node['key'].replace('_', '-')}"
     label = escape(node["label"])
     meta = escape(node["meta"])
     status = escape(node["status"])
     node_type = escape(node["type"])
     summary_attr = _escape_data_attr(node["detail"])
+    width, height = _get_flow_node_size(node["type"])
     if node["type"] in {"start", "end"}:
         shape = (
-            f'<ellipse class="flow-node-shape" cx="{center_x}" cy="{top_y + 30}" rx="86" ry="28"></ellipse>'
+            f'<ellipse class="flow-node-shape" cx="{center_x}" cy="{center_y}" rx="{width / 2:.0f}" ry="{height / 2:.0f}"></ellipse>'
         )
     elif node["type"] == "decision":
+        half_width = width / 2
+        half_height = height / 2
         shape = (
-            f'<polygon class="flow-node-shape" points="{center_x},{top_y} {center_x + 84},{top_y + 30} '
-            f'{center_x},{top_y + 60} {center_x - 84},{top_y + 30}"></polygon>'
+            f'<polygon class="flow-node-shape" points="{center_x},{center_y - half_height:.0f} '
+            f'{center_x + half_width:.0f},{center_y} {center_x},{center_y + half_height:.0f} '
+            f'{center_x - half_width:.0f},{center_y}"></polygon>'
         )
     else:
         shape = (
-            f'<rect class="flow-node-shape" x="{center_x - 92}" y="{top_y}" width="184" height="60" rx="12" ry="12"></rect>'
+            f'<rect class="flow-node-shape" x="{center_x - width / 2:.0f}" y="{center_y - height / 2:.0f}" '
+            f'width="{width:.0f}" height="{height:.0f}" rx="12" ry="12"></rect>'
         )
 
     return f"""
@@ -1555,11 +1599,219 @@ def _render_svg_flow_node(anchor_id: str, node: dict[str, str], center_x: int, t
        data-node-title="{label}"
        data-node-summary="{summary_attr}">
       {shape}
-      <text class="flow-node-text" x="{center_x}" y="{top_y + 25}">{label}</text>
-      <text class="flow-node-subtext" x="{center_x}" y="{top_y + 43}">{meta}</text>
-      <rect class="flow-node-hitbox" x="{center_x - 104}" y="{top_y - 10}" width="208" height="80" rx="16" ry="16"></rect>
+      <text class="flow-node-text" x="{center_x}" y="{center_y - 7}">{label}</text>
+      <text class="flow-node-subtext" x="{center_x}" y="{center_y + 14}">{meta}</text>
+      <rect class="flow-node-hitbox" x="{center_x - width / 2 - 12:.0f}" y="{center_y - height / 2 - 12:.0f}" width="{width + 24:.0f}" height="{height + 24:.0f}" rx="16" ry="16"></rect>
     </g>
     """
+
+
+def _render_flow_connectors(
+    anchor_id: str,
+    match: dict[str, Any],
+    nodes: list[dict[str, str]],
+    positions: dict[str, dict[str, int]],
+    node_lookup: dict[str, dict[str, str]],
+) -> list[str]:
+    connectors: list[str] = []
+    main_pairs = [
+        ("start", "extract_question", ""),
+        ("extract_question", "ac_enriched_question", _short_edge_text(str(match.get("question", "")).strip(), 18)),
+        ("ac_enriched_question", "preprocess_knowledge", _short_edge_text(str(match.get("ac_enriched_question", "")).strip(), 18)),
+        ("preprocess_knowledge", "preprocess_decision", ""),
+        ("preprocess_decision", "mask_question", "DataQuery" if str(match.get("preprocess_decision", "")).strip() == "data_query" else ""),
+        ("mask_question", "sql_knowledge", _short_edge_text(str(match.get("mask_question", "")).strip(), 18)),
+        (
+            "sql_knowledge",
+            "sql_rewrite",
+            _short_edge_text(str(match.get("sql_rewritten_question", "") or match.get("rewritten_question", "")).strip(), 18),
+        ),
+        ("sql_rewrite", "recalled_tables", _summarize_tables_for_edge(match.get("recalled_tables", []))),
+        ("recalled_tables", "ir_table_definition", ""),
+        ("ir_table_definition", "final_prompt", ""),
+        ("final_prompt", "verifier", ""),
+        ("verifier", "generated_ir", "通过" if str(match.get("flow_status", "unknown")) == "success" else "输出最终IR"),
+        ("generated_ir", "end", _short_edge_text(_extract_sql_summary(match), 24)),
+    ]
+
+    for from_key, to_key, label in main_pairs:
+        status_class = _resolve_linear_connector_status(node_lookup, from_key, to_key)
+        connectors.append(
+            _render_vertical_connector(
+                positions[from_key]["cx"],
+                _flow_node_bottom(positions[from_key]["cy"], node_lookup[from_key]["type"]),
+                _flow_node_top(positions[to_key]["cy"], node_lookup[to_key]["type"]),
+                status_class,
+                label,
+            )
+        )
+
+    preprocess_decision = str(match.get("preprocess_decision", "")).strip()
+    if preprocess_decision in {"reject_request", "ask_human"}:
+        branch_label = "RejectRequest" if preprocess_decision == "reject_request" else "AskHuman"
+        branch_status = "reject" if preprocess_decision == "reject_request" else "follow-up"
+        connectors.append(
+            _render_routed_connector(
+                [
+                    (
+                        positions["preprocess_decision"]["cx"] + _get_flow_node_size("decision")[0] / 2,
+                        positions["preprocess_decision"]["cy"],
+                    ),
+                    (610, positions["preprocess_decision"]["cy"]),
+                    (610, positions["end"]["cy"] - 34),
+                    (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
+                    (positions["end"]["cx"] + 94, positions["end"]["cy"]),
+                ],
+                branch_status,
+                branch_label,
+                label_x=650,
+                label_y=positions["preprocess_decision"]["cy"] + 28,
+            )
+        )
+
+    retry_count = int(match.get("retry_count", 0) or 0)
+    if retry_count > 0:
+        connectors.append(
+            _render_routed_connector(
+                [
+                    (
+                        positions["verifier"]["cx"] - 110,
+                        positions["verifier"]["cy"],
+                    ),
+                    (170, positions["verifier"]["cy"]),
+                    (170, positions["final_prompt"]["cy"]),
+                    (
+                        positions["final_prompt"]["cx"] - 128,
+                        positions["final_prompt"]["cy"],
+                    ),
+                ],
+                "failed",
+                f"重试 {retry_count} 次",
+                loop=True,
+                label_x=142,
+                label_y=(positions["verifier"]["cy"] + positions["final_prompt"]["cy"]) / 2,
+            )
+        )
+
+    if str(match.get("flow_status", "unknown")) == "failed":
+        connectors.append(
+            _render_routed_connector(
+                [
+                    (
+                        positions["verifier"]["cx"] + 110,
+                        positions["verifier"]["cy"],
+                    ),
+                    (634, positions["verifier"]["cy"]),
+                    (634, positions["end"]["cy"] - 34),
+                    (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
+                    (positions["end"]["cx"] + 94, positions["end"]["cy"]),
+                ],
+                "failed",
+                "最终失败",
+                label_x=658,
+                label_y=positions["verifier"]["cy"] + 26,
+            )
+        )
+
+    return connectors
+
+
+def _render_vertical_connector(center_x: int, start_y: float, end_y: float, status_class: str, label: str = "") -> str:
+    path = f"M {center_x} {start_y:.0f} L {center_x} {end_y:.0f}"
+    return _render_connector_path(path, status_class, label, center_x + 68, (start_y + end_y) / 2 if label else None)
+
+
+def _render_routed_connector(
+    points: list[tuple[float, float]],
+    status_class: str,
+    label: str = "",
+    *,
+    loop: bool = False,
+    label_x: float | None = None,
+    label_y: float | None = None,
+) -> str:
+    path = "M " + " L ".join(f"{x:.0f} {y:.0f}" for x, y in points)
+    classes = status_class
+    if loop:
+        classes = f"{classes} loop".strip()
+    return _render_connector_path(path, classes, label, label_x, label_y)
+
+
+def _render_connector_path(path: str, status_class: str, label: str, label_x: float | None, label_y: float | None) -> str:
+    class_names = ["flow-connector-line"]
+    normalized = status_class.strip()
+    if normalized:
+        for part in normalized.split():
+            if part == "loop":
+                class_names.append("flow-connector-loop")
+            else:
+                class_names.append(f"flow-connector-{part}")
+    label_html = ""
+    if label and label_x is not None and label_y is not None:
+        label_html = _render_edge_label(label, label_x, label_y)
+    return (
+        f'<g><path class="{" ".join(class_names)}" marker-end="url(#flow-arrow-head)" d="{path}"></path>'
+        f"{label_html}</g>"
+    )
+
+
+def _render_edge_label(label: str, x: float, y: float) -> str:
+    label_text = escape(label)
+    width = max(44, min(160, 14 + len(label) * 11))
+    return (
+        f'<g class="flow-edge-label" transform="translate({x:.0f},{y:.0f})">'
+        f'<rect class="flow-edge-label-bg" x="{-width / 2:.0f}" y="-12" width="{width:.0f}" height="24" rx="7" ry="7"></rect>'
+        f'<text class="flow-edge-label-text" x="0" y="1">{label_text}</text>'
+        f"</g>"
+    )
+
+
+def _resolve_linear_connector_status(
+    node_lookup: dict[str, dict[str, str]],
+    from_key: str,
+    to_key: str,
+) -> str:
+    from_status = node_lookup[from_key]["status"]
+    to_status = node_lookup[to_key]["status"]
+    if from_status == "unknown" or to_status == "unknown":
+        return "unknown"
+    if to_status in {"failed", "reject", "follow-up", "success"}:
+        return to_status
+    return ""
+
+
+def _get_flow_node_size(node_type: str) -> tuple[int, int]:
+    if node_type in {"start", "end"}:
+        return (210, 58)
+    if node_type == "decision":
+        return (220, 84)
+    return (232, 68)
+
+
+def _flow_node_top(center_y: float, node_type: str) -> float:
+    return center_y - _get_flow_node_size(node_type)[1] / 2
+
+
+def _flow_node_bottom(center_y: float, node_type: str) -> float:
+    return center_y + _get_flow_node_size(node_type)[1] / 2
+
+
+def _summarize_tables_for_edge(items: Any) -> str:
+    if not isinstance(items, list):
+        return ""
+    values = [str(item).strip() for item in items if str(item).strip()]
+    if not values:
+        return ""
+    if len(values) == 1:
+        return _short_edge_text(values[0], 18)
+    return f"{len(values)}表"
+
+
+def _short_edge_text(text: str, limit: int) -> str:
+    compact = " ".join(text.split())
+    if not compact or len(compact) > limit:
+        return ""
+    return compact
 
 
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
@@ -1836,6 +2088,10 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 status = "success"
             elif flow_status == "failed":
                 status = "failed"
+            elif flow_status == "reject":
+                status = "reject"
+            elif flow_status == "follow_up":
+                status = "follow-up"
             else:
                 status = "unknown"
 
