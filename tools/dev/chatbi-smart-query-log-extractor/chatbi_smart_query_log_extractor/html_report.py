@@ -9,17 +9,17 @@ from typing import Any
 FLOW_NODE_SPECS = [
     {"key": "start", "label": "开始", "meta": "起始", "type": "start"},
     {"key": "extract_question", "label": "1 提取用户问题", "meta": "锚点", "type": "process"},
-    {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "预处理", "type": "process"},
-    {"key": "preprocess_knowledge", "label": "2.2 预处理知识", "meta": "预处理", "type": "process"},
-    {"key": "preprocess_decision", "label": "2.3 预处理判定", "meta": "判断", "type": "decision"},
+    {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "拒答/追问", "type": "process"},
+    {"key": "preprocess_knowledge", "label": "2.2 拒答/追问知识", "meta": "拒答/追问", "type": "process"},
+    {"key": "preprocess_decision", "label": "2.3 拒答/追问判定", "meta": "判断", "type": "decision"},
     {"key": "mask_question", "label": "3.1 标准化问题", "meta": "Text2Data", "type": "process"},
     {"key": "sql_knowledge", "label": "3.2 SQL 生成知识", "meta": "Text2Data", "type": "process"},
     {"key": "sql_rewrite", "label": "3.3 SQL 改写", "meta": "Text2Data", "type": "process"},
     {"key": "recalled_tables", "label": "3.4 表检索", "meta": "Text2Data", "type": "process"},
     {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "Text2Data", "type": "process"},
     {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "Text2Data", "type": "process"},
-    {"key": "verifier", "label": "3.7 校验", "meta": "判断", "type": "decision"},
-    {"key": "generated_ir", "label": "3.8 生成 IR", "meta": "Text2Data", "type": "process"},
+    {"key": "generated_ir", "label": "3.7 生成 IR", "meta": "Text2Data", "type": "process"},
+    {"key": "verifier", "label": "3.8 校验", "meta": "判断", "type": "decision"},
     {"key": "end", "label": "结束", "meta": "结果", "type": "end"},
 ]
 
@@ -447,6 +447,17 @@ def render_html(report: dict[str, Any]) -> str:
       text-anchor: middle;
       dominant-baseline: middle;
     }}
+    .flow-svg .flow-group-box {{
+      fill: rgba(209, 225, 248, 0.22);
+      stroke: #a8bad6;
+      stroke-width: 1.2;
+      stroke-dasharray: 6 5;
+    }}
+    .flow-svg .flow-group-title {{
+      fill: #5f738e;
+      font-size: 12px;
+      font-weight: 700;
+    }}
     .flow-svg .flow-node-shape {{
       stroke-width: 1.5;
       transition: fill 0.16s ease, stroke 0.16s ease, filter 0.16s ease;
@@ -471,9 +482,6 @@ def render_html(report: dict[str, Any]) -> str:
       stroke: #99a8bb;
       stroke-width: 1.6;
       fill: none;
-    }}
-    .flow-svg .flow-connector-loop {{
-      stroke-dasharray: 6 5;
     }}
     .flow-svg .flow-connector-unknown {{
       stroke: #c7d0dc;
@@ -1138,8 +1146,8 @@ def render_html(report: dict[str, Any]) -> str:
       {{ key: 'status_summary', label: '流程状态' }},
       {{ key: 'anchor_line', label: '命中锚点日志' }},
       {{ key: 'ac_enriched_question', label: 'AC 补充问题' }},
-      {{ key: 'preprocess_rewritten_question', label: '预处理改写' }},
-      {{ key: 'preprocess_knowledge', label: '预处理知识' }},
+      {{ key: 'preprocess_rewritten_question', label: '拒答/追问改写' }},
+      {{ key: 'preprocess_knowledge', label: '拒答/追问知识' }},
       {{ key: 'mask_question', label: '标准化问题' }},
       {{ key: 'sql_knowledge', label: 'SQL生成知识' }},
       {{ key: 'sql_rewrite', label: '问题改写' }},
@@ -1828,6 +1836,7 @@ def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str
     connector_parts = []
     node_lookup = {node["key"]: node for node in nodes}
 
+    connector_parts.extend(_render_flow_groups(positions))
     connector_parts.extend(_render_flow_connectors(anchor_id, match, nodes, positions, node_lookup))
     for node in nodes:
         node_parts.append(_render_svg_flow_node(anchor_id, node, positions[node["key"]]["cx"], positions[node["key"]]["cy"]))
@@ -1836,13 +1845,33 @@ def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str
     <svg class="flow-svg" viewBox="0 0 {width} {height}" role="img" aria-label="调用流程图">
       <defs>
         <marker id="flow-arrow-head" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
-          <polygon points="0 0, 7 3.5, 0 7" fill="#99a8bb"></polygon>
+          <polygon points="0 0, 7 3.5, 0 7" fill="context-stroke"></polygon>
         </marker>
       </defs>
       {''.join(connector_parts)}
       {''.join(node_parts)}
     </svg>
     """
+
+
+def _render_flow_groups(positions: dict[str, dict[str, int]]) -> list[str]:
+    groups = [
+        ("意图识别", "ac_enriched_question", "preprocess_decision"),
+        ("SQL生成", "mask_question", "verifier"),
+    ]
+    rendered: list[str] = []
+    for label, start_key, end_key in groups:
+        top = positions[start_key]["cy"] - 48
+        bottom = positions[end_key]["cy"] + 52
+        rendered.append(
+            f"""
+            <g class="flow-group">
+              <rect class="flow-group-box" x="120" y="{top:.0f}" width="504" height="{bottom - top:.0f}" rx="18" ry="18"></rect>
+              <text class="flow-group-title" x="144" y="{top + 20:.0f}">{escape(label)}</text>
+            </g>
+            """
+        )
+    return rendered
 
 
 def _render_svg_flow_node(anchor_id: str, node: dict[str, str], center_x: int, center_y: int) -> str:
@@ -1897,7 +1926,6 @@ def _render_flow_connectors(
         ("extract_question", "ac_enriched_question", _short_edge_text(str(match.get("question", "")).strip(), 18)),
         ("ac_enriched_question", "preprocess_knowledge", _short_edge_text(str(match.get("ac_enriched_question", "")).strip(), 18)),
         ("preprocess_knowledge", "preprocess_decision", ""),
-        ("preprocess_decision", "mask_question", "DataQuery" if str(match.get("preprocess_decision", "")).strip() == "data_query" else ""),
         ("mask_question", "sql_knowledge", _short_edge_text(str(match.get("mask_question", "")).strip(), 18)),
         (
             "sql_knowledge",
@@ -1907,9 +1935,8 @@ def _render_flow_connectors(
         ("sql_rewrite", "recalled_tables", _summarize_tables_for_edge(match.get("recalled_tables", []))),
         ("recalled_tables", "ir_table_definition", ""),
         ("ir_table_definition", "final_prompt", ""),
-        ("final_prompt", "verifier", ""),
-        ("verifier", "generated_ir", "通过" if str(match.get("flow_status", "unknown")) == "success" else "输出最终IR"),
-        ("generated_ir", "end", _short_edge_text(_extract_sql_summary(match), 24)),
+        ("final_prompt", "generated_ir", ""),
+        ("generated_ir", "verifier", ""),
     ]
 
     for from_key, to_key, label in main_pairs:
@@ -1925,30 +1952,57 @@ def _render_flow_connectors(
         )
 
     preprocess_decision = str(match.get("preprocess_decision", "")).strip()
-    if preprocess_decision in {"reject_request", "ask_human"}:
-        branch_label = "RejectRequest" if preprocess_decision == "reject_request" else "AskHuman"
-        branch_status = "reject" if preprocess_decision == "reject_request" else "follow-up"
-        connectors.append(
-            _render_routed_connector(
-                [
-                    (
-                        positions["preprocess_decision"]["cx"] + _get_flow_node_size("decision")[0] / 2,
-                        positions["preprocess_decision"]["cy"],
-                    ),
-                    (610, positions["preprocess_decision"]["cy"]),
-                    (610, positions["end"]["cy"] - 34),
-                    (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
-                    (positions["end"]["cx"] + 94, positions["end"]["cy"]),
-                ],
-                branch_status,
-                branch_label,
-                label_x=650,
-                label_y=positions["preprocess_decision"]["cy"] + 28,
-            )
+    data_query_active = preprocess_decision == "data_query"
+    reject_active = preprocess_decision == "reject_request"
+    follow_up_active = preprocess_decision == "ask_human"
+    connectors.append(
+        _render_vertical_connector(
+            positions["preprocess_decision"]["cx"],
+            _flow_node_bottom(positions["preprocess_decision"]["cy"], node_lookup["preprocess_decision"]["type"]),
+            _flow_node_top(positions["mask_question"]["cy"], node_lookup["mask_question"]["type"]),
+            _resolve_linear_connector_status(node_lookup, "preprocess_decision", "mask_question") if data_query_active else "unknown",
+            _compose_data_query_edge_label(match) if data_query_active else "问数",
         )
+    )
+    connectors.append(
+        _render_routed_connector(
+            [
+                (
+                    positions["preprocess_decision"]["cx"] + _get_flow_node_size("decision")[0] / 2,
+                    positions["preprocess_decision"]["cy"] - 16,
+                ),
+                (626, positions["preprocess_decision"]["cy"] - 16),
+                (626, positions["end"]["cy"] - 40),
+                (positions["end"]["cx"] + 94, positions["end"]["cy"] - 40),
+                (positions["end"]["cx"] + 94, positions["end"]["cy"] - 10),
+            ],
+            "reject" if reject_active else "unknown",
+            "拒答",
+            label_x=654,
+            label_y=positions["preprocess_decision"]["cy"] - 8,
+        )
+    )
+    connectors.append(
+        _render_routed_connector(
+            [
+                (
+                    positions["preprocess_decision"]["cx"] + _get_flow_node_size("decision")[0] / 2,
+                    positions["preprocess_decision"]["cy"] + 16,
+                ),
+                (646, positions["preprocess_decision"]["cy"] + 16),
+                (646, positions["end"]["cy"] + 8),
+                (positions["end"]["cx"] + 98, positions["end"]["cy"] + 8),
+                (positions["end"]["cx"] + 98, positions["end"]["cy"]),
+            ],
+            "follow-up" if follow_up_active else "unknown",
+            "追问",
+            label_x=672,
+            label_y=positions["preprocess_decision"]["cy"] + 34,
+        )
+    )
 
     retry_count = int(match.get("retry_count", 0) or 0)
-    if retry_count > 0:
+    if retry_count > 0 or str(match.get("flow_status", "unknown")) == "failed":
         connectors.append(
             _render_routed_connector(
                 [
@@ -1957,39 +2011,47 @@ def _render_flow_connectors(
                         positions["verifier"]["cy"],
                     ),
                     (170, positions["verifier"]["cy"]),
-                    (170, positions["final_prompt"]["cy"]),
+                    (170, positions["generated_ir"]["cy"]),
                     (
-                        positions["final_prompt"]["cx"] - 128,
-                        positions["final_prompt"]["cy"],
+                        positions["generated_ir"]["cx"] - 128,
+                        positions["generated_ir"]["cy"],
                     ),
                 ],
-                "failed",
-                f"重试 {retry_count} 次",
-                loop=True,
+                "failed" if retry_count > 0 else "unknown",
+                f"重试 {retry_count} 次" if retry_count > 0 else "",
                 label_x=142,
-                label_y=(positions["verifier"]["cy"] + positions["final_prompt"]["cy"]) / 2,
+                label_y=(positions["verifier"]["cy"] + positions["generated_ir"]["cy"]) / 2,
             )
         )
 
-    if str(match.get("flow_status", "unknown")) == "failed":
-        connectors.append(
-            _render_routed_connector(
-                [
-                    (
-                        positions["verifier"]["cx"] + 110,
-                        positions["verifier"]["cy"],
-                    ),
-                    (634, positions["verifier"]["cy"]),
-                    (634, positions["end"]["cy"] - 34),
-                    (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
-                    (positions["end"]["cx"] + 94, positions["end"]["cy"]),
-                ],
-                "failed",
-                "最终失败",
-                label_x=658,
-                label_y=positions["verifier"]["cy"] + 26,
-            )
+    flow_status = str(match.get("flow_status", "unknown"))
+    connectors.append(
+        _render_vertical_connector(
+            positions["verifier"]["cx"],
+            _flow_node_bottom(positions["verifier"]["cy"], node_lookup["verifier"]["type"]),
+            _flow_node_top(positions["end"]["cy"], node_lookup["end"]["type"]),
+            "success" if flow_status == "success" else "unknown",
+            _short_edge_text(_extract_sql_summary(match), 24) if flow_status == "success" else "",
         )
+    )
+    connectors.append(
+        _render_routed_connector(
+            [
+                (
+                    positions["verifier"]["cx"] + 110,
+                    positions["verifier"]["cy"],
+                ),
+                (634, positions["verifier"]["cy"]),
+                (634, positions["end"]["cy"] - 34),
+                (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
+                (positions["end"]["cx"] + 94, positions["end"]["cy"]),
+            ],
+            "failed" if flow_status == "failed" else "unknown",
+            "最终失败",
+            label_x=658,
+            label_y=positions["verifier"]["cy"] + 26,
+        )
+    )
 
     return connectors
 
@@ -2092,6 +2154,14 @@ def _short_edge_text(text: str, limit: int) -> str:
     return compact
 
 
+def _compose_data_query_edge_label(match: dict[str, Any]) -> str:
+    base = "问数"
+    rewritten = _short_edge_text(str(match.get("preprocess_rewritten_question", "")).strip(), 18)
+    if rewritten:
+        return f"{base} {rewritten}"
+    return base
+
+
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     title = f"{match['anchor_timestamp']} | 线程 {match['thread_id']} | 第 {match['index']} 次调用"
     associated_threads = match.get("associated_thread_ids", [])
@@ -2126,8 +2196,8 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     sections.extend([
         _wrap_config_item("anchor_line", _render_text_section("命中锚点日志", match["anchor_line"])),
         _wrap_config_item("ac_enriched_question", _render_text_section("AC 补充问题", match.get("ac_enriched_question", ""))),
-        _wrap_config_item("preprocess_rewritten_question", _render_text_section("预处理改写", match.get("preprocess_rewritten_question", ""))),
-        _wrap_config_item("preprocess_knowledge", _render_grouped_knowledge_section("预处理知识", preprocess_group)),
+        _wrap_config_item("preprocess_rewritten_question", _render_text_section("拒答/追问改写", match.get("preprocess_rewritten_question", ""))),
+        _wrap_config_item("preprocess_knowledge", _render_grouped_knowledge_section("拒答/追问知识", preprocess_group)),
         _wrap_config_item(
             "mask_question",
             _render_collapsible_text_section(
@@ -2176,7 +2246,6 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
                 skipped="final_prompt" in skipped_sections,
             ),
         ),
-        _wrap_config_item("verifier_records", _render_highlight_list_section("校验记录", match["verifier_failures"], "retry-block")),
         _wrap_config_item(
             "generated_ir",
             _render_collapsible_text_section(
@@ -2185,6 +2254,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
                 skipped="generated_ir" in skipped_sections,
             ),
         ),
+        _wrap_config_item("verifier_records", _render_highlight_list_section("校验记录", match["verifier_failures"], "retry-block")),
         _wrap_config_item(
             "complete_ir",
             _render_copyable_text_section(
@@ -2233,8 +2303,8 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
             str(match.get("final_prompt", {}).get("combined", "")).strip()
             or str(match.get("final_prompt", {}).get("raw", "")).strip()
         ),
-        "verifier": bool(match.get("verifier_failures")),
         "generated_ir": bool(str(match.get("generated_ir", "")).strip()),
+        "verifier": bool(match.get("verifier_failures")) or str(match.get("flow_status", "unknown")) in {"success", "failed"},
         "end": str(match.get("flow_status", "unknown")) in {"success", "failed"},
     }
 
@@ -2253,6 +2323,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "preprocess_knowledge": direct["preprocess_knowledge"] or any(
@@ -2266,6 +2337,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "preprocess_decision": direct["preprocess_decision"] or any(
@@ -2278,6 +2350,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "mask_question": direct["mask_question"] or any(
@@ -2289,6 +2362,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "sql_knowledge": direct["sql_knowledge"] or any(
@@ -2299,6 +2373,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "sql_rewrite": direct["sql_rewrite"] or any(
@@ -2308,6 +2383,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "recalled_tables": direct["recalled_tables"] or any(
@@ -2316,6 +2392,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
         "ir_table_definition": direct["ir_table_definition"] or any(
@@ -2323,11 +2400,12 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
             for key in [
                 "final_prompt",
                 "generated_ir",
+                "verifier",
             ]
         ),
-        "final_prompt": direct["final_prompt"] or direct["generated_ir"],
-        "verifier": direct["verifier"] or direct["generated_ir"] or (direct["end"] and direct["final_prompt"]),
-        "generated_ir": direct["generated_ir"],
+        "final_prompt": direct["final_prompt"] or direct["generated_ir"] or direct["verifier"],
+        "generated_ir": direct["generated_ir"] or direct["verifier"] or direct["end"],
+        "verifier": direct["verifier"] or (direct["end"] and direct["generated_ir"]),
         "end": direct["end"],
     }
 
@@ -2343,8 +2421,8 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
         "recalled_tables": _format_list_tooltip(match.get("recalled_tables", [])),
         "ir_table_definition": str(match.get("ir_table_definition", "")).strip(),
         "final_prompt": str(match.get("final_prompt", {}).get("combined", "")).strip() or str(match.get("final_prompt", {}).get("raw", "")).strip(),
-        "verifier": verifier_text,
         "generated_ir": str(match.get("generated_ir", "")).strip(),
+        "verifier": verifier_text,
         "end": end_text,
     }
 
@@ -2452,7 +2530,7 @@ def _format_preprocess_decision_tooltip(match: dict[str, Any]) -> str:
     rewritten_question = str(match.get("preprocess_rewritten_question", "")).strip()
     parts = [f"判定: {decision_label}"]
     if rewritten_question:
-        parts.append(f"预处理改写:\n{rewritten_question}")
+        parts.append(f"拒答/追问改写:\n{rewritten_question}")
     if decision in {"reject_request", "ask_human"}:
         parts.append("流程在该节点终止，后续步骤未执行。")
     return "\n\n".join(parts).strip()
@@ -2480,9 +2558,9 @@ def _format_end_tooltip(match: dict[str, Any]) -> str:
             return "流程状态: 失败\n\n校验失败原因:\n" + "\n".join(failures)
         return "流程状态: 失败"
     if flow_status == "reject":
-        return "流程状态: 拒答\n\n流程在预处理阶段终止。"
+        return "流程状态: 拒答\n\n流程在拒答/追问阶段终止。"
     if flow_status == "follow_up":
-        return "流程状态: 追问\n\n流程在预处理阶段终止。"
+        return "流程状态: 追问\n\n流程在拒答/追问阶段终止。"
     return "流程状态: 未知\n\n未命中结束信号，流程可能中断或服务重启。"
 
 
@@ -2567,7 +2645,7 @@ def _render_status_summary(match: dict[str, Any]) -> str:
     elif preprocess_decision == "ask_human":
         preprocess_label = "AskHuman"
     preprocess_chip = (
-        f'<span class="status-chip">预处理判定：{escape(preprocess_label)}</span>'
+        f'<span class="status-chip">拒答/追问判定：{escape(preprocess_label)}</span>'
         if preprocess_label
         else ""
     )
@@ -2586,7 +2664,7 @@ def _wrap_config_item(field_key: str, content: str) -> str:
 
 def _render_placeholder(skipped: bool = False) -> str:
     if skipped:
-        return '<div class="missing">未执行（流程在预处理终止）</div>'
+        return '<div class="missing">未执行（流程在拒答/追问阶段终止）</div>'
     return '<div class="missing">未命中该字段</div>'
 
 
