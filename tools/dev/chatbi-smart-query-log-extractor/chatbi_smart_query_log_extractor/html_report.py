@@ -292,6 +292,21 @@ def render_html(report: dict[str, Any]) -> str:
       margin: 0 0 8px;
       font-size: 16px;
     }}
+    .knowledge-group {{
+      display: grid;
+      gap: 10px;
+    }}
+    .knowledge-item {{
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fafcff;
+    }}
+    .knowledge-item h4 {{
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: #42546d;
+    }}
     .status-summary {{
       display: flex;
       flex-wrap: wrap;
@@ -470,6 +485,13 @@ def render_html(report: dict[str, Any]) -> str:
       overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
+    }}
+    .knowledge-item pre.knowledge-pre {{
+      padding: 10px 12px;
+      background: #f3f7fd;
+      color: #223247;
+      border: 1px solid #d7e0ee;
+      border-radius: 8px;
     }}
     .list {{
       margin: 0;
@@ -821,35 +843,40 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         associated_threads_meta = f'<div class="meta">关联线程：{escape(", ".join(associated_threads))}</div>'
     skipped_sections = set(match.get("skipped_sections", []))
     preprocess_knowledge = match.get("preprocess_knowledge", {})
-    preprocess_rewrite_knowledge = _format_knowledge_bundle(preprocess_knowledge.get("intention_rewrite"))
-    sql_generation_knowledge = _format_knowledge_bundle(match.get("sql_generation_knowledge"))
-    few_shot_knowledge = _format_knowledge_bundle(match.get("few_shot_knowledge"))
+    preprocess_group = [
+        ("问题改写", _format_knowledge_bundle(preprocess_knowledge.get("rewrite"))),
+        ("拒答", "\n".join(str(item).strip() for item in preprocess_knowledge.get("reject", []) if str(item).strip())),
+        ("追问", "\n".join(str(item).strip() for item in preprocess_knowledge.get("follow_up", []) if str(item).strip())),
+    ]
+    sql_knowledge = match.get("sql_knowledge", {})
+    sql_generation_knowledge = _format_knowledge_bundle(
+        sql_knowledge.get("generation") or match.get("sql_generation_knowledge")
+    )
+    few_shot_knowledge = _format_knowledge_bundle(
+        sql_knowledge.get("few_shot") or match.get("few_shot_knowledge")
+    )
+    sql_group = [
+        ("生成逻辑", sql_generation_knowledge),
+        ("Few-shot", few_shot_knowledge),
+    ]
+    sql_knowledge_skipped = (
+        "sql_knowledge" in skipped_sections
+        or ("sql_generation_knowledge" in skipped_sections and "few_shot_knowledge" in skipped_sections)
+    )
     sections = [
         _render_status_summary(match),
-        _render_highlight_list_section("重试记录", match["verifier_failures"], "retry-block"),
     ]
     sections.extend([
         _render_text_section("命中锚点日志", match["anchor_line"]),
         _render_text_section("AC 补充问题", match.get("ac_enriched_question", "")),
         _render_text_section("预处理改写", match.get("preprocess_rewritten_question", "")),
-        _render_text_section("预处理知识检索", preprocess_rewrite_knowledge),
-        _render_list_section("拒答知识", preprocess_knowledge.get("reject", [])),
-        _render_list_section("追问知识", preprocess_knowledge.get("follow_up", [])),
+        _render_grouped_knowledge_section("预处理知识", preprocess_group),
         _render_collapsible_text_section(
             "标准化问题",
             match.get("mask_question", ""),
             skipped="mask_question" in skipped_sections,
         ),
-        _render_text_section(
-            "SQL 知识检索",
-            sql_generation_knowledge,
-            skipped="sql_generation_knowledge" in skipped_sections,
-        ),
-        _render_text_section(
-            "Few Shot 检索",
-            few_shot_knowledge,
-            skipped="few_shot_knowledge" in skipped_sections,
-        ),
+        _render_grouped_knowledge_section("SQL生成知识", sql_group, skipped=sql_knowledge_skipped),
         _render_sql_rewrite_section(
             "问题改写",
             match.get("sql_rewritten_question", "") or match.get("rewritten_question", ""),
@@ -857,11 +884,6 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             match.get("sql_rewrite_prompt_raw", ""),
             match.get("sql_rewrite_prompt_json", ""),
             skipped="sql_rewritten_question" in skipped_sections,
-        ),
-        _render_collapsible_list_section(
-            "RAG 检索结果",
-            match["rag_results"],
-            skipped="rag_results" in skipped_sections,
         ),
         _render_list_section(
             "表检索结果",
@@ -882,6 +904,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             prompt=match["final_prompt"],
             skipped="final_prompt" in skipped_sections,
         ),
+        _render_highlight_list_section("校验记录", match["verifier_failures"], "retry-block"),
         _render_collapsible_text_section(
             "生成 IR 结果",
             match["generated_ir"],
@@ -1169,6 +1192,44 @@ def _render_sql_rewrite_section(
     """
 
 
+def _render_grouped_knowledge_section(
+    title: str,
+    groups: list[tuple[str, str]],
+    skipped: bool = False,
+) -> str:
+    if skipped:
+        return _render_text_section(title, "", skipped=True)
+
+    cards = []
+    has_any = False
+    for label, content in groups:
+        normalized = str(content).strip()
+        if normalized:
+            has_any = True
+            body = f'<pre class="knowledge-pre">{escape(normalized)}</pre>'
+        else:
+            body = _render_placeholder(False)
+        cards.append(
+            f'<div class="knowledge-item"><h4>{escape(label)}</h4>{body}</div>'
+        )
+
+    if not cards:
+        return _render_text_section(title, "", skipped=skipped)
+    if not has_any:
+        return f"""
+        <section class="section">
+          <h3>{escape(title)}</h3>
+          {_render_placeholder(False)}
+        </section>
+        """
+    return f"""
+    <section class="section">
+      <h3>{escape(title)}</h3>
+      <div class="knowledge-group">{''.join(cards)}</div>
+    </section>
+    """
+
+
 def _build_prompt_messages_json(prompt: dict[str, str]) -> str:
     system = prompt.get("system", "")
     user = prompt.get("user", "")
@@ -1244,9 +1305,7 @@ def _format_knowledge_bundle(bundle: dict[str, Any] | None) -> str:
         return ""
     lines = []
     mappings = [
-        ("global_request", "全局请求"),
         ("global_result", "全局结果"),
-        ("scope_request", "作用域请求"),
         ("scope_result", "作用域结果"),
     ]
     for key, label in mappings:

@@ -278,7 +278,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(second_group["question"], ALT_QUESTION)
         self.assertEqual(second_group["total_matches"], 1)
         third = second_group["matches"][0]
-        self.assertIn("rag_results", third["missing_sections"])
+        self.assertNotIn("rag_results", third["missing_sections"])
         self.assertIn("rewritten_question", third["missing_sections"])
         self.assertIn("final_prompt: failed to parse payload", "".join(third["parse_errors"]))
         self.assertIn("ir_table_definition: missing terminator", "".join(third["parse_errors"]))
@@ -318,7 +318,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(second["thread_id"], "223456789012345")
         self.assertEqual(second["match_id"], _build_match_id("223456789012345", 19))
         self.assertEqual(second["anchor_timestamp"], "2026-04-02 19:05:01.665")
-        self.assertIn("rag_results", second["missing_sections"])
+        self.assertNotIn("rag_results", second["missing_sections"])
         self.assertIn("ir_table_definition", second["missing_sections"])
         self.assertIn("complete_ir", second["missing_sections"])
 
@@ -328,7 +328,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(report["total_questions"], 1)
         self.assertEqual(report["questions"][0]["question"], QUESTION)
         match = report["questions"][0]["matches"][0]
-        self.assertIn("rag_results", match["missing_sections"])
+        self.assertNotIn("rag_results", match["missing_sections"])
         self.assertIn("rewritten_question", match["missing_sections"])
         self.assertIn("final_prompt", "".join(match["parse_errors"]))
         self.assertEqual(match["final_prompt"]["raw"], "not-a-json-payload")
@@ -447,7 +447,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(first["rag_results"], [])
         self.assertEqual(first["recalled_tables"], [])
         self.assertEqual(first["ir_table_definition"], "")
-        self.assertIn("rag_results", first["missing_sections"])
+        self.assertNotIn("rag_results", first["missing_sections"])
 
     def test_extract_report_keeps_child_segments_when_logs_interleave_between_calls(self) -> None:
         report = extract_report(INTERLEAVED_CHILD_LOG, "interleaved.log")
@@ -487,11 +487,11 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(match["preprocess_decision"], "data_query")
         self.assertEqual(match["preprocess_rewritten_question"], "预处理改写问题")
         self.assertEqual(
-            match["preprocess_knowledge"]["intention_rewrite"]["global_result"],
+            match["preprocess_knowledge"]["rewrite"]["global_result"],
             "preprocess global result",
         )
         self.assertEqual(
-            match["preprocess_knowledge"]["intention_rewrite"]["scope_result"],
+            match["preprocess_knowledge"]["rewrite"]["scope_result"],
             "preprocess rewrite result",
         )
         self.assertEqual(match["mask_question"], "标准化问题")
@@ -532,7 +532,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn("generated_ir", follow_match["missing_sections"])
 
     def test_render_html_shows_reject_follow_up_and_sql_rewrite_copy_actions(self) -> None:
-        report = extract_report(TERMINATED_PREPROCESS_LOG + PREPROCESS_SQL_FLOW_LOG, "mixed.log")
+        report = extract_report(f"{TERMINATED_PREPROCESS_LOG}\n{PREPROCESS_SQL_FLOW_LOG}", "mixed.log")
         html = render_html(report)
 
         self.assertIn("拒答问题数：1", html)
@@ -544,7 +544,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("未执行（流程在预处理终止）", html)
         self.assertIn('title="复制提示词 JSON"', html)
         self.assertIn('title="复制改写问题"', html)
-        self.assertIn('data-copy-target="sql-rewrite-question-3-match-1-prompt-json"', html)
+        self.assertRegex(html, r'data-copy-target="sql-rewrite-question-\d+-match-\d+-prompt-json"')
 
     def test_render_html_shows_navigation_prompt_and_missing_markers(self) -> None:
         report = extract_report((FIXTURES_ROOT / "complex_chatbi.log").read_text(encoding="utf-8"), "complex_chatbi.log")
@@ -577,7 +577,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("classList.add('nav-parent-active')", html)
         self.assertIn("window.addEventListener('hashchange', updateActiveNavLinks);", html)
         self.assertIn("overflow-y: auto;", html)
-        self.assertIn("<summary>RAG 检索结果</summary>", html)
+        self.assertNotIn("<summary>RAG 检索结果</summary>", html)
         self.assertIn("<summary>IR 表定义</summary>", html)
         self.assertIn("<summary>最终 Prompt</summary>", html)
         self.assertIn("<summary>生成 IR 结果</summary>", html)
@@ -642,7 +642,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("流程状态：未知", html)
         self.assertIn("重试次数：2", html)
         self.assertIn("重试次数：1", html)
-        self.assertIn("重试记录", html)
+        self.assertIn("校验记录", html)
         self.assertNotIn("最终失败原因", html)
         self.assertIn("first verifier failure", html)
         self.assertIn("second verifier failure", html)

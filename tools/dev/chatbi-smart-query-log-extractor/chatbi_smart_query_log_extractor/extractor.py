@@ -31,7 +31,7 @@ FLOW_FAIL_KEYWORD = "sql_flow exception: SQL is empty"
 FLOW_SUCCESS_KEYWORD = "sqlflow res: sql:"
 AC_QUESTION_KEYWORD = "question after ac: "
 PREPROCESS_DECISION_KEYWORD = "react chat llm chient res"
-QUERY_INTENT_RE = re.compile(r'"query_intent"\s*:\s*"(?P<query>.*?)"')
+QUERY_INTENT_RE = re.compile(r"""['"]query_intent['"]\s*:\s*['"](?P<query>.*?)['"]""")
 KNOWLEDGE_REQUEST_KEYWORD = "knowledge retriever:"
 INTENTION_REWRITE_SCOPE = "IntentionRewrite"
 SQL_GENERATION_SCOPE = "SQLGeneration"
@@ -454,9 +454,7 @@ def _anchor_is_covered_by_cross_thread_match(anchor: dict[str, Any], match: dict
 def _default_knowledge_bundle(scope: str) -> dict[str, str]:
     return {
         "scope": scope,
-        "global_request": "",
         "global_result": "",
-        "scope_request": "",
         "scope_result": "",
     }
 
@@ -489,9 +487,27 @@ def _extract_preprocess_decision(entries: list[dict[str, Any]]) -> dict[str, Any
             decision = ASK_HUMAN_DECISION
         elif "DataQuery" in line:
             decision = DATA_QUERY_DECISION
-        query_match = QUERY_INTENT_RE.search(line)
-        if query_match:
-            rewritten_question = query_match.group("query").strip()
+        payload_text = _extract_after_keyword(line, PREPROCESS_DECISION_KEYWORD)
+        if payload_text:
+            try:
+                payload = _load_prompt_payload(payload_text)
+            except (json.JSONDecodeError, ValueError, TypeError, SyntaxError):
+                payload = None
+            if isinstance(payload, dict):
+                payload_type = str(payload.get("type", "")).strip()
+                if payload_type == "RejectRequest":
+                    decision = REJECT_REQUEST_DECISION
+                elif payload_type == "AskHuman":
+                    decision = ASK_HUMAN_DECISION
+                elif payload_type == "DataQuery":
+                    decision = DATA_QUERY_DECISION
+                payload_intent = payload.get("query_intent")
+                if isinstance(payload_intent, str) and payload_intent.strip():
+                    rewritten_question = payload_intent.strip()
+        if not rewritten_question:
+            query_match = QUERY_INTENT_RE.search(line)
+            if query_match:
+                rewritten_question = query_match.group("query").strip()
     return {
         "decision": decision,
         "raw_line": raw_line,
@@ -507,28 +523,35 @@ def _extract_last_knowledge_sequence(entries: list[dict[str, Any]], scope_keywor
 
     best_candidate: tuple[int, dict[str, str]] | None = None
     for scoped_entries in thread_entries.values():
-        for index in range(len(scoped_entries) - 3):
-            first = scoped_entries[index]["line"]
-            second = scoped_entries[index + 1]["line"]
-            third = scoped_entries[index + 2]["line"]
-            fourth = scoped_entries[index + 3]["line"]
-            if KNOWLEDGE_REQUEST_KEYWORD not in first or "Global" not in first:
+        scoped_entries.sort(key=lambda item: item["line_number"])
+        current = _default_knowledge_bundle(scope_keyword)
+        pending_request_scope = ""
+        for entry in scoped_entries:
+            line = entry["line"]
+            if KNOWLEDGE_REQUEST_KEYWORD in line:
+                if "Global" in line:
+                    pending_request_scope = "global"
+                elif scope_keyword in line:
+                    pending_request_scope = "scope"
+                else:
+                    pending_request_scope = ""
                 continue
-            if RAG_KEYWORD not in second:
-                continue
-            if KNOWLEDGE_REQUEST_KEYWORD not in third or scope_keyword not in third:
-                continue
-            if RAG_KEYWORD not in fourth:
-                continue
-            candidate = {
-                "scope": scope_keyword,
-                "global_request": _extract_after_keyword(first, KNOWLEDGE_REQUEST_KEYWORD),
-                "global_result": _extract_after_keyword(second, RAG_KEYWORD),
-                "scope_request": _extract_after_keyword(third, KNOWLEDGE_REQUEST_KEYWORD),
-                "scope_result": _extract_after_keyword(fourth, RAG_KEYWORD),
-            }
-            candidate_end_line = scoped_entries[index + 3]["line_number"]
-            best_candidate = (candidate_end_line, candidate)
+            if pending_request_scope and RAG_KEYWORD in line:
+                result = _extract_after_keyword(line, RAG_KEYWORD)
+                if pending_request_scope == "global":
+                    current["global_result"] = result
+                elif pending_request_scope == "scope":
+                    current["scope_result"] = result
+                    if result:
+                        best_candidate = (
+                            entry["line_number"],
+                            {
+                                "scope": scope_keyword,
+                                "global_result": current["global_result"],
+                                "scope_result": current["scope_result"],
+                            },
+                        )
+                pending_request_scope = ""
     return best_candidate[1] if best_candidate is not None else bundle
 
 
@@ -596,9 +619,9 @@ def _build_skipped_sections(terminated_at_preprocess: bool) -> list[str]:
         "mask_question",
         "sql_generation_knowledge",
         "few_shot_knowledge",
+        "sql_knowledge",
         "sql_rewrite_prompt",
         "sql_rewritten_question",
-        "rag_results",
         "recalled_tables",
         "ir_table_definition",
         "final_prompt",
@@ -624,7 +647,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
     skipped_sections = _build_skipped_sections(terminated_at_preprocess)
     ac_enriched_question = _extract_line_value(preprocess_entries, AC_QUESTION_KEYWORD)
     preprocess_knowledge = {
-        "intention_rewrite": _extract_last_knowledge_sequence(preprocess_entries, INTENTION_REWRITE_SCOPE),
+        "rewrite": _extract_last_knowledge_sequence(preprocess_entries, INTENTION_REWRITE_SCOPE),
         "reject": _extract_matching_lines(preprocess_entries, REJECT_KNOWLEDGE_KEYWORD),
         "follow_up": _extract_matching_lines(preprocess_entries, FOLLOW_UP_KNOWLEDGE_KEYWORD),
     }
@@ -685,6 +708,10 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         if terminated_at_preprocess
         else _extract_last_knowledge_sequence(log_entries, FEW_SHOT_SCOPE)
     )
+    sql_knowledge = {
+        "generation": sql_generation_knowledge,
+        "few_shot": few_shot_knowledge,
+    }
     sql_rewrite_prompt_raw, sql_rewrite_prompt_json, sql_rewritten_question, sql_rewrite_errors = (
         ("", "", "", [])
         if terminated_at_preprocess
@@ -693,8 +720,6 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
     rewritten_question = sql_rewritten_question
 
     missing_sections: list[str] = []
-    if not _is_skipped(skipped_sections, "rag_results") and not rag_results:
-        missing_sections.append("rag_results")
     if not _is_skipped(skipped_sections, "sql_rewritten_question") and not rewritten_question:
         missing_sections.append("rewritten_question")
     if not _is_skipped(skipped_sections, "recalled_tables") and not recalled_tables:
@@ -733,6 +758,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "mask_question": mask_question,
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
+        "sql_knowledge": sql_knowledge,
         "sql_rewrite_prompt_raw": sql_rewrite_prompt_raw,
         "sql_rewrite_prompt_json": sql_rewrite_prompt_json,
         "rag_results": rag_results,
@@ -763,7 +789,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
     skipped_sections = _build_skipped_sections(terminated_at_preprocess)
     ac_enriched_question = _extract_line_value(root_entries, AC_QUESTION_KEYWORD)
     preprocess_knowledge = {
-        "intention_rewrite": _extract_last_knowledge_sequence(root_entries, INTENTION_REWRITE_SCOPE),
+        "rewrite": _extract_last_knowledge_sequence(root_entries, INTENTION_REWRITE_SCOPE),
         "reject": _extract_matching_lines(root_entries, REJECT_KNOWLEDGE_KEYWORD),
         "follow_up": _extract_matching_lines(root_entries, FOLLOW_UP_KNOWLEDGE_KEYWORD),
     }
@@ -821,6 +847,10 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         if terminated_at_preprocess
         else _extract_last_knowledge_sequence(log_entries, FEW_SHOT_SCOPE)
     )
+    sql_knowledge = {
+        "generation": sql_generation_knowledge,
+        "few_shot": few_shot_knowledge,
+    }
     sql_rewrite_prompt_raw, sql_rewrite_prompt_json, sql_rewritten_question, sql_rewrite_errors = (
         ("", "", "", [])
         if terminated_at_preprocess
@@ -830,8 +860,6 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
     rewritten_question = sql_rewritten_question or (raw_match["rewrite_questions"][0] if raw_match["rewrite_questions"] else "")
 
     missing_sections: list[str] = []
-    if not _is_skipped(skipped_sections, "rag_results") and not rag_results:
-        missing_sections.append("rag_results")
     if not _is_skipped(skipped_sections, "sql_rewritten_question") and not rewritten_question:
         missing_sections.append("rewritten_question")
     if not _is_skipped(skipped_sections, "recalled_tables") and not recalled_tables:
@@ -871,6 +899,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "mask_question": mask_question,
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
+        "sql_knowledge": sql_knowledge,
         "sql_rewrite_prompt_raw": sql_rewrite_prompt_raw,
         "sql_rewrite_prompt_json": sql_rewrite_prompt_json,
         "rag_results": rag_results,
