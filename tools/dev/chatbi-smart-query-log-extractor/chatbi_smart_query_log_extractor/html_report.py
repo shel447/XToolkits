@@ -23,10 +23,11 @@ def render_html(report: dict[str, Any]) -> str:
         match_nav_items = []
         for match in question_group["matches"]:
             anchor_id = f"{question_anchor_id}-match-{match['index']}"
-            match_nav_items.append(f"<li>{_render_nav_match_link(anchor_id, match)}</li>")
+            match_nav_items.append(f"<li>{_render_nav_match_link(anchor_id, match, question_anchor_id)}</li>")
         nested_nav = f"<ul>{''.join(match_nav_items)}</ul>" if match_nav_items else ""
         nav_items.append(
-            f'<li><a href="#{question_anchor_id}">{escape(question_label)}</a>{nested_nav}</li>'
+            f'<li><a class="nav-question-link" data-question-anchor="{escape(question_anchor_id)}" '
+            f'href="#{question_anchor_id}">{escape(question_label)}</a>{nested_nav}</li>'
         )
         detail_sections.append(_render_question_group(question_anchor_id, question_group))
 
@@ -197,6 +198,12 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--accent);
       font-weight: 700;
     }}
+    .nav a.nav-question-active {{
+      background: #edf5ff;
+      border-color: #bfd3f3;
+      color: #1f4f89;
+      font-weight: 700;
+    }}
     .nav a.nav-parent-active {{
       background: #eef6ff;
       border-color: #c8daf6;
@@ -287,6 +294,9 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .section {{
       margin-top: 18px;
+    }}
+    .config-item.config-hidden {{
+      display: none !important;
     }}
     .section h3 {{
       margin: 0 0 8px;
@@ -518,6 +528,93 @@ def render_html(report: dict[str, Any]) -> str:
     .empty {{
       padding: 24px;
     }}
+    .settings-fab {{
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 40;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #f8fbff;
+      color: #27405f;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+    }}
+    .settings-fab:hover {{
+      background: #edf5ff;
+    }}
+    .settings-panel {{
+      position: fixed;
+      right: 14px;
+      bottom: 54px;
+      width: 280px;
+      max-height: min(70vh, 560px);
+      z-index: 41;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }}
+    .settings-panel[hidden] {{
+      display: none;
+    }}
+    .settings-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: #f7faff;
+    }}
+    .settings-header strong {{
+      font-size: 13px;
+      color: #334a67;
+    }}
+    .settings-close {{
+      width: 24px;
+      height: 24px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #ffffff;
+      color: #516074;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+    }}
+    .settings-list {{
+      display: grid;
+      gap: 2px;
+      padding: 8px;
+      overflow-y: auto;
+    }}
+    .settings-item {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      color: #334155;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }}
+    .settings-item:hover {{
+      background: #f2f7ff;
+    }}
+    .settings-item input {{
+      margin: 0;
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent);
+    }}
     @media (max-width: 960px) {{
       .layout {{
         grid-template-columns: 1fr;
@@ -526,6 +623,15 @@ def render_html(report: dict[str, Any]) -> str:
         position: static;
         max-height: none;
         overflow-y: visible;
+      }}
+      .settings-fab {{
+        right: 10px;
+        bottom: 10px;
+      }}
+      .settings-panel {{
+        right: 10px;
+        left: 10px;
+        width: auto;
       }}
     }}
   </style>
@@ -551,6 +657,14 @@ def render_html(report: dict[str, Any]) -> str:
       <main class="matches">{details_html}</main>
     </div>
   </div>
+  <button type="button" id="settings-toggle" class="settings-fab" aria-controls="settings-panel" aria-expanded="false">设置</button>
+  <aside id="settings-panel" class="settings-panel" hidden>
+    <div class="settings-header">
+      <strong>详情展示项</strong>
+      <button type="button" id="settings-close" class="settings-close" aria-label="关闭设置">×</button>
+    </div>
+    <div id="settings-list" class="settings-list"></div>
+  </aside>
   <script>
     async function copySection(button) {{
       const targetId = button.getAttribute('data-copy-target');
@@ -706,7 +820,170 @@ def render_html(report: dict[str, Any]) -> str:
       }}
     }}
 
-    function updateActiveNavLinks() {{
+    const DETAIL_FIELD_OPTIONS = [
+      {{ key: 'status_summary', label: '流程状态' }},
+      {{ key: 'anchor_line', label: '命中锚点日志' }},
+      {{ key: 'ac_enriched_question', label: 'AC 补充问题' }},
+      {{ key: 'preprocess_rewritten_question', label: '预处理改写' }},
+      {{ key: 'preprocess_knowledge', label: '预处理知识' }},
+      {{ key: 'mask_question', label: '标准化问题' }},
+      {{ key: 'sql_knowledge', label: 'SQL生成知识' }},
+      {{ key: 'sql_rewrite', label: '问题改写' }},
+      {{ key: 'recalled_tables', label: '表检索结果' }},
+      {{ key: 'ir_table_definition', label: 'IR 表定义' }},
+      {{ key: 'final_prompt', label: '最终 Prompt' }},
+      {{ key: 'verifier_records', label: '校验记录' }},
+      {{ key: 'generated_ir', label: '生成 IR 结果' }},
+      {{ key: 'complete_ir', label: '完整 IR' }},
+      {{ key: 'parse_errors', label: '解析错误' }},
+    ];
+    const DETAIL_FIELD_STORAGE_KEY = 'chatbi_report_detail_fields_v1';
+    let detailFieldVisibility = {{}};
+    let navSyncTicking = false;
+
+    function getDefaultDetailVisibility() {{
+      const defaults = {{}};
+      DETAIL_FIELD_OPTIONS.forEach((option) => {{
+        defaults[option.key] = true;
+      }});
+      return defaults;
+    }}
+
+    function loadDetailVisibility() {{
+      const defaults = getDefaultDetailVisibility();
+      try {{
+        const raw = window.localStorage.getItem(DETAIL_FIELD_STORAGE_KEY);
+        if (!raw) {{
+          return defaults;
+        }}
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {{
+          return defaults;
+        }}
+        const merged = {{ ...defaults }};
+        for (const option of DETAIL_FIELD_OPTIONS) {{
+          if (typeof parsed[option.key] === 'boolean') {{
+            merged[option.key] = parsed[option.key];
+          }}
+        }}
+        return merged;
+      }} catch (error) {{
+        return defaults;
+      }}
+    }}
+
+    function saveDetailVisibility() {{
+      try {{
+        window.localStorage.setItem(DETAIL_FIELD_STORAGE_KEY, JSON.stringify(detailFieldVisibility));
+      }} catch (error) {{
+      }}
+    }}
+
+    function applyDetailVisibility() {{
+      const blocks = document.querySelectorAll('.config-item[data-field-key]');
+      blocks.forEach((block) => {{
+        const key = block.getAttribute('data-field-key');
+        const visible = key ? detailFieldVisibility[key] !== false : true;
+        block.classList.toggle('config-hidden', !visible);
+      }});
+    }}
+
+    function renderSettingsList() {{
+      const container = document.getElementById('settings-list');
+      if (!container) {{
+        return;
+      }}
+      const items = DETAIL_FIELD_OPTIONS.map((option) => {{
+        const checked = detailFieldVisibility[option.key] !== false;
+        const checkedAttr = checked ? ' checked' : '';
+        return (
+          `<label class="settings-item">` +
+          `<input type="checkbox" data-field-key="${{option.key}}"${{checkedAttr}} />` +
+          `<span>${{option.label}}</span>` +
+          `</label>`
+        );
+      }});
+      container.innerHTML = items.join('');
+      container.querySelectorAll('input[type="checkbox"][data-field-key]').forEach((input) => {{
+        input.addEventListener('change', () => {{
+          const fieldKey = input.getAttribute('data-field-key');
+          if (!fieldKey) {{
+            return;
+          }}
+          detailFieldVisibility[fieldKey] = input.checked;
+          saveDetailVisibility();
+          applyDetailVisibility();
+        }});
+      }});
+    }}
+
+    function setSettingsPanelOpen(open) {{
+      const panel = document.getElementById('settings-panel');
+      const toggle = document.getElementById('settings-toggle');
+      if (!panel || !toggle) {{
+        return;
+      }}
+      if (open) {{
+        panel.removeAttribute('hidden');
+        toggle.setAttribute('aria-expanded', 'true');
+      }} else {{
+        panel.setAttribute('hidden', '');
+        toggle.setAttribute('aria-expanded', 'false');
+      }}
+    }}
+
+    function initSettingsPanel() {{
+      detailFieldVisibility = loadDetailVisibility();
+      applyDetailVisibility();
+      renderSettingsList();
+      const toggle = document.getElementById('settings-toggle');
+      const close = document.getElementById('settings-close');
+      const panel = document.getElementById('settings-panel');
+      if (toggle) {{
+        toggle.addEventListener('click', (event) => {{
+          event.stopPropagation();
+          const shouldOpen = toggle.getAttribute('aria-expanded') !== 'true';
+          setSettingsPanelOpen(shouldOpen);
+        }});
+      }}
+      if (close) {{
+        close.addEventListener('click', () => {{
+          setSettingsPanelOpen(false);
+        }});
+      }}
+      document.addEventListener('click', (event) => {{
+        if (!panel || panel.hasAttribute('hidden')) {{
+          return;
+        }}
+        const target = event.target;
+        if (!(target instanceof Node)) {{
+          return;
+        }}
+        if (panel.contains(target) || (toggle && toggle.contains(target))) {{
+          return;
+        }}
+        setSettingsPanelOpen(false);
+      }});
+      document.addEventListener('keydown', (event) => {{
+        if (event.key === 'Escape') {{
+          setSettingsPanelOpen(false);
+        }}
+      }});
+    }}
+
+    function scrollNavIntoView(link) {{
+      const nav = document.querySelector('.nav');
+      if (!nav || !link) {{
+        return;
+      }}
+      const navRect = nav.getBoundingClientRect();
+      const linkRect = link.getBoundingClientRect();
+      if (linkRect.top < navRect.top || linkRect.bottom > navRect.bottom) {{
+        link.scrollIntoView({{ block: 'nearest' }});
+      }}
+    }}
+
+    function updateActiveNavLinks(anchorId = '') {{
       const nav = document.querySelector('.nav');
       if (!nav) {{
         return;
@@ -715,29 +992,76 @@ def render_html(report: dict[str, Any]) -> str:
       links.forEach((link) => {{
         link.classList.remove('nav-active');
         link.classList.remove('nav-parent-active');
+        link.classList.remove('nav-question-active');
       }});
-      const hash = window.location.hash;
-      if (!hash) {{
+      const resolvedAnchorId = anchorId || (window.location.hash ? window.location.hash.slice(1) : '');
+      if (!resolvedAnchorId) {{
         return;
       }}
-      const activeLink = links.find((link) => link.getAttribute('href') === hash);
+      const expectedHref = `#${{resolvedAnchorId}}`;
+      const activeLink = links.find((link) => link.getAttribute('href') === expectedHref);
       if (!activeLink) {{
         return;
       }}
       activeLink.classList.add('nav-active');
-      const parentList = activeLink.closest('ul');
-      const parentItem = parentList ? parentList.closest('li') : null;
-      if (!parentItem) {{
-        return;
+      let questionAnchor = activeLink.getAttribute('data-question-anchor') || '';
+      if (!questionAnchor) {{
+        questionAnchor = activeLink.getAttribute('data-parent-question-anchor') || '';
       }}
-      const parentQuestionLink = parentItem.firstElementChild;
-      if (parentQuestionLink instanceof HTMLAnchorElement && parentQuestionLink !== activeLink) {{
-        parentQuestionLink.classList.add('nav-parent-active');
+      if (questionAnchor) {{
+        const questionLink = links.find(
+          (link) =>
+            link.classList.contains('nav-question-link') &&
+            link.getAttribute('data-question-anchor') === questionAnchor,
+        );
+        if (questionLink) {{
+          questionLink.classList.add('nav-question-active');
+          if (questionLink !== activeLink) {{
+            questionLink.classList.add('nav-parent-active');
+          }}
+        }}
       }}
+      scrollNavIntoView(activeLink);
     }}
 
-    window.addEventListener('hashchange', updateActiveNavLinks);
-    window.addEventListener('DOMContentLoaded', updateActiveNavLinks);
+    function getActiveAnchorFromViewport() {{
+      const sections = Array.from(document.querySelectorAll('.question-group[id], .match[id]'));
+      if (!sections.length) {{
+        return '';
+      }}
+      const threshold = 136;
+      let active = sections[0].id;
+      for (const section of sections) {{
+        if (section.getBoundingClientRect().top - threshold <= 0) {{
+          active = section.id;
+        }} else {{
+          break;
+        }}
+      }}
+      return active;
+    }}
+
+    function syncNavToViewport() {{
+      if (navSyncTicking) {{
+        return;
+      }}
+      navSyncTicking = true;
+      window.requestAnimationFrame(() => {{
+        updateActiveNavLinks(getActiveAnchorFromViewport());
+        navSyncTicking = false;
+      }});
+    }}
+
+    function initializePage() {{
+      initSettingsPanel();
+      updateActiveNavLinks();
+      syncNavToViewport();
+    }}
+
+    window.addEventListener('hashchange', () => updateActiveNavLinks());
+    window.addEventListener('scroll', syncNavToViewport, {{ passive: true }});
+    window.addEventListener('resize', syncNavToViewport);
+    window.addEventListener('DOMContentLoaded', initializePage);
   </script>
 </body>
 </html>"""
@@ -809,7 +1133,7 @@ def _render_summary_retry_reasons(retry_reason_counts: Counter[str]) -> str:
     """
 
     items = "".join(
-        f"<li>{escape(reason)}（{count}次）</li>"
+        f"<li><strong>{count}次</strong> {escape(reason)}</li>"
         for reason, count in sorted(retry_reason_counts.items(), key=lambda item: (-item[1], item[0]))
     )
     return f"""
@@ -864,64 +1188,85 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         or ("sql_generation_knowledge" in skipped_sections and "few_shot_knowledge" in skipped_sections)
     )
     sections = [
-        _render_status_summary(match),
+        _wrap_config_item("status_summary", _render_status_summary(match)),
     ]
     sections.extend([
-        _render_text_section("命中锚点日志", match["anchor_line"]),
-        _render_text_section("AC 补充问题", match.get("ac_enriched_question", "")),
-        _render_text_section("预处理改写", match.get("preprocess_rewritten_question", "")),
-        _render_grouped_knowledge_section("预处理知识", preprocess_group),
-        _render_collapsible_text_section(
-            "标准化问题",
-            match.get("mask_question", ""),
-            skipped="mask_question" in skipped_sections,
+        _wrap_config_item("anchor_line", _render_text_section("命中锚点日志", match["anchor_line"])),
+        _wrap_config_item("ac_enriched_question", _render_text_section("AC 补充问题", match.get("ac_enriched_question", ""))),
+        _wrap_config_item("preprocess_rewritten_question", _render_text_section("预处理改写", match.get("preprocess_rewritten_question", ""))),
+        _wrap_config_item("preprocess_knowledge", _render_grouped_knowledge_section("预处理知识", preprocess_group)),
+        _wrap_config_item(
+            "mask_question",
+            _render_collapsible_text_section(
+                "标准化问题",
+                match.get("mask_question", ""),
+                skipped="mask_question" in skipped_sections,
+            ),
         ),
-        _render_grouped_knowledge_section("SQL生成知识", sql_group, skipped=sql_knowledge_skipped),
-        _render_sql_rewrite_section(
-            "问题改写",
-            match.get("sql_rewritten_question", "") or match.get("rewritten_question", ""),
-            f"sql-rewrite-{anchor_id}",
-            match.get("sql_rewrite_prompt_raw", ""),
-            match.get("sql_rewrite_prompt_json", ""),
-            skipped="sql_rewritten_question" in skipped_sections,
+        _wrap_config_item("sql_knowledge", _render_grouped_knowledge_section("SQL生成知识", sql_group, skipped=sql_knowledge_skipped)),
+        _wrap_config_item(
+            "sql_rewrite",
+            _render_sql_rewrite_section(
+                "问题改写",
+                match.get("sql_rewritten_question", "") or match.get("rewritten_question", ""),
+                f"sql-rewrite-{anchor_id}",
+                match.get("sql_rewrite_prompt_raw", ""),
+                match.get("sql_rewrite_prompt_json", ""),
+                skipped="sql_rewritten_question" in skipped_sections,
+            ),
         ),
-        _render_list_section(
-            "表检索结果",
-            match["recalled_tables"],
-            skipped="recalled_tables" in skipped_sections,
+        _wrap_config_item(
+            "recalled_tables",
+            _render_list_section(
+                "表检索结果",
+                match["recalled_tables"],
+                skipped="recalled_tables" in skipped_sections,
+            ),
         ),
-        _render_collapsible_text_section(
-            "IR 表定义",
-            match["ir_table_definition"],
-            skipped="ir_table_definition" in skipped_sections,
+        _wrap_config_item(
+            "ir_table_definition",
+            _render_collapsible_text_section(
+                "IR 表定义",
+                match["ir_table_definition"],
+                skipped="ir_table_definition" in skipped_sections,
+            ),
         ),
-        _render_collapsible_prompt_execution_section(
-            "最终 Prompt",
-            match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
-            f"final-prompt-{anchor_id}",
-            match_id=match["match_id"],
-            executable=bool(match["final_prompt"].get("system") and match["final_prompt"].get("user")),
-            prompt=match["final_prompt"],
-            skipped="final_prompt" in skipped_sections,
+        _wrap_config_item(
+            "final_prompt",
+            _render_collapsible_prompt_execution_section(
+                "最终 Prompt",
+                match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
+                f"final-prompt-{anchor_id}",
+                match_id=match["match_id"],
+                executable=bool(match["final_prompt"].get("system") and match["final_prompt"].get("user")),
+                prompt=match["final_prompt"],
+                skipped="final_prompt" in skipped_sections,
+            ),
         ),
-        _render_highlight_list_section("校验记录", match["verifier_failures"], "retry-block"),
-        _render_collapsible_text_section(
-            "生成 IR 结果",
-            match["generated_ir"],
-            skipped="generated_ir" in skipped_sections,
+        _wrap_config_item("verifier_records", _render_highlight_list_section("校验记录", match["verifier_failures"], "retry-block")),
+        _wrap_config_item(
+            "generated_ir",
+            _render_collapsible_text_section(
+                "生成 IR 结果",
+                match["generated_ir"],
+                skipped="generated_ir" in skipped_sections,
+            ),
         ),
-        _render_copyable_text_section(
-            "完整 IR",
-            match["complete_ir"],
-            f"complete-ir-{anchor_id}",
-            show_execute=True,
-            match_id=match["match_id"],
-            skipped="complete_ir" in skipped_sections,
+        _wrap_config_item(
+            "complete_ir",
+            _render_copyable_text_section(
+                "完整 IR",
+                match["complete_ir"],
+                f"complete-ir-{anchor_id}",
+                show_execute=True,
+                match_id=match["match_id"],
+                skipped="complete_ir" in skipped_sections,
+            ),
         ),
     ])
 
     if match["parse_errors"]:
-        sections.append(_render_list_section("解析错误", match["parse_errors"], kind="errors"))
+        sections.append(_wrap_config_item("parse_errors", _render_list_section("解析错误", match["parse_errors"], kind="errors")))
 
     return f"""
     <section id="{escape(anchor_id)}" class="match">
@@ -933,7 +1278,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     """
 
 
-def _render_nav_match_link(anchor_id: str, match: dict[str, Any]) -> str:
+def _render_nav_match_link(anchor_id: str, match: dict[str, Any], question_anchor_id: str) -> str:
     status = match.get("flow_status", "success")
     if status == "success":
         icon = "✓"
@@ -951,7 +1296,8 @@ def _render_nav_match_link(anchor_id: str, match: dict[str, Any]) -> str:
         icon = "?"
         status_class = "nav-status-unknown"
     return (
-        f'<a class="nav-match-link" href="#{escape(anchor_id)}">'
+        f'<a class="nav-match-link" data-parent-question-anchor="{escape(question_anchor_id)}" '
+        f'href="#{escape(anchor_id)}">'
         f'<span class="nav-status {status_class}">'
         f'<span class="nav-status-icon">{icon}</span>'
         f'<span class="nav-retry-badge">{match.get("retry_count", 0)}</span>'
@@ -998,6 +1344,10 @@ def _render_status_summary(match: dict[str, Any]) -> str:
       <span class="status-chip">重试次数：{match.get("retry_count", 0)}</span>
     </section>
     """
+
+
+def _wrap_config_item(field_key: str, content: str) -> str:
+    return f'<div class="config-item" data-field-key="{escape(field_key)}">{content}</div>'
 
 
 def _render_placeholder(skipped: bool = False) -> str:
