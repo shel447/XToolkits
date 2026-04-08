@@ -137,8 +137,9 @@ resulted_sql = to_sql(intent_result)
 - 最终 Prompt 只识别包含 `生成器任务：` 的日志行，并兼容 JSON、Python 对象直接序列化后的单引号消息体，或直接序列化的消息数组；会分别提取前两条 message 的 `content`
 - 页面展示的最终 Prompt 是合并结果，但执行时仍使用原始两条消息一起调用，不会直接把合并后的展示文本当请求体
 - 页面执行接口和完整 IR 执行接口都按 `match_id` 定位，不再使用线程 ID 直接定位
-- 调用结果会额外提取 `verifier result: 0:` 形成 `verifier_failures`，并把出现次数记为 `retry_count`；问题导航只显示时间，但会在成功/失败图标右上角叠加重试次数数字
-- `sql_flow exception: SQL is empty` 只用于判定该次调用最终失败；详情区只保留黄色区块展示重试记录
+- 调用结果会额外提取 `verifier result: 0:` 形成 `verifier_failures`，并把出现次数记为 `retry_count`；问题导航只显示时间，但会在成功/失败/未知图标右上角叠加重试次数数字
+- 流程状态是三态：`failed / success / unknown`
+- `sql_flow exception: SQL is empty` 判定为失败；若在目标调用块（主线程+关联线程）里命中包含线程 ID 且带 `sqlflow res: sql:` 的日志行，则判定为成功；两者都未命中则判定为未知（中断或服务重启）
 - 兼容字段 `rewritten_question` 现在表示该次主调用的首个 `call sqlflow input:` 内容；完整改写链路看 `rewrite_questions`。子线程是否并入当前调用，则看它的完整标记 `MASK QUESTION: {改写后的问题}` 是否命中这条改写链
 - 静态 HTML 适合直接双击打开查看；执行按钮、页面内切换日志文件/目录这类交互能力必须通过 `--serve` 页面使用
 - `IR 表定义` 从 `表定义的IR：` 之后开始提取，不保留关键词前缀

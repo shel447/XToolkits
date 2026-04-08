@@ -28,6 +28,7 @@ CALL_SQLFLOW_INPUT_KEYWORD = "call sqlflow input:"
 MASK_QUESTION_KEYWORD = "MASK QUESTION:"
 VERIFIER_FAIL_KEYWORD = "verifier result: 0:"
 FLOW_FAIL_KEYWORD = "sql_flow exception: SQL is empty"
+FLOW_SUCCESS_KEYWORD = "sqlflow res: sql:"
 
 
 def read_log_text(log_path: str | Path, encoding: str | None = None) -> str:
@@ -384,11 +385,11 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         for line in window_lines
         if _line_has_thread_id(line, thread_id) and VERIFIER_FAIL_KEYWORD in line
     ]
-    flow_status = (
-        "failed"
-        if any(_line_has_thread_id(line, thread_id) and FLOW_FAIL_KEYWORD in line for line in window_lines)
-        else "success"
+    has_failed = any(_line_has_thread_id(line, thread_id) and FLOW_FAIL_KEYWORD in line for line in window_lines)
+    has_succeeded = any(
+        _line_has_thread_id(line, thread_id) and FLOW_SUCCESS_KEYWORD in line for line in window_lines
     )
+    flow_status = "failed" if has_failed else "success" if has_succeeded else "unknown"
     rag_results = [
         line.strip()
         for line in window_lines
@@ -483,11 +484,9 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         for entry in log_entries
         if VERIFIER_FAIL_KEYWORD in entry["line"]
     ]
-    flow_status = (
-        "failed"
-        if any(FLOW_FAIL_KEYWORD in entry["line"] for entry in log_entries)
-        else "success"
-    )
+    has_failed = any(FLOW_FAIL_KEYWORD in entry["line"] for entry in log_entries)
+    has_succeeded = any(FLOW_SUCCESS_KEYWORD in entry["line"] for entry in log_entries)
+    flow_status = "failed" if has_failed else "success" if has_succeeded else "unknown"
     rag_results = [
         entry["line"].strip()
         for entry in log_entries

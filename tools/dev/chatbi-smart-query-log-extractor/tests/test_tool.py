@@ -43,6 +43,7 @@ class FinalIR:
     metric: str
 SELECT amount FROM sales_order
 tables = get_tables_columns(table_exprs)
+2026-04-02 19:00:01.790 [INFO] [123456789012345] sqlflow res: sql: SELECT amount FROM sales_order
 2026-04-02 19:05:01.665 [INFO] [223456789012345] sql_template_match hit query: 近7天销售额是多少
 2026-04-02 19:05:01.710 [INFO] [223456789012345] rewrite question from [old] [new] 帮我查询近7天销售额
 2026-04-02 19:05:01.770 [INFO] [223456789012345] 生成器任务：{"messages": [{"role": "system", "content": "系统提示\\n第二次"}, {"role": "user", "content": "用户问题\\n第二次"}]}
@@ -52,6 +53,7 @@ class SecondIR:
     ds_filter: str
 SELECT amount FROM sales_order WHERE ds >= current_date - 7
 tables = get_tables_columns(table_exprs)
+2026-04-02 19:05:01.790 [INFO] [223456789012345] sqlflow res: sql: SELECT amount FROM sales_order WHERE ds >= current_date - 7
 """
 
 PARTIAL_LOG = """2026-04-02 20:00:01.665 [INFO] [323456789012345] sql_template_match hit query: 近7天销售额是多少
@@ -67,6 +69,14 @@ LIST_PROMPT_LOG = """2026-04-02 21:00:01.665 [INFO] [423456789012346] sql_templa
 2026-04-02 21:00:01.780 [INFO] [423456789012346] 最终的IR
 @dataclass
 class ListPromptIR:
+tables = get_tables_columns(table_exprs)
+"""
+
+UNKNOWN_FLOW_LOG = """2026-04-02 22:00:01.665 [INFO] [523456789012346] sql_template_match hit query: 近7天销售额是多少
+2026-04-02 22:00:01.770 [INFO] [523456789012346] 生成器任务：[{'role': 'system', 'content': 'line 1'}, {'role': 'user', 'content': 'line 2'}]
+2026-04-02 22:00:01.780 [INFO] [523456789012346] 最终的IR
+@dataclass
+class UnknownIR:
 tables = get_tables_columns(table_exprs)
 """
 
@@ -231,7 +241,7 @@ class ExtractorTests(unittest.TestCase):
 
         second = report["questions"][0]["matches"][1]
         self.assertEqual(second["thread_id"], "223456789012345")
-        self.assertEqual(second["match_id"], _build_match_id("223456789012345", 18))
+        self.assertEqual(second["match_id"], _build_match_id("223456789012345", 19))
         self.assertEqual(second["anchor_timestamp"], "2026-04-02 19:05:01.665")
         self.assertIn("rag_results", second["missing_sections"])
         self.assertIn("ir_table_definition", second["missing_sections"])
@@ -264,6 +274,12 @@ class ExtractorTests(unittest.TestCase):
         )
         self.assertNotIn("final_prompt", "".join(match["parse_errors"]))
 
+    def test_extract_report_marks_unknown_when_no_success_or_failure_signal_exists(self) -> None:
+        report = extract_report(UNKNOWN_FLOW_LOG, "unknown-flow.log")
+
+        match = report["questions"][0]["matches"][0]
+        self.assertEqual(match["flow_status"], "unknown")
+
     def test_extract_report_uses_thread_window_when_thread_id_is_reused(self) -> None:
         report = extract_report((FIXTURES_ROOT / "thread_reuse_chatbi.log").read_text(encoding="utf-8"), "thread_reuse_chatbi.log")
 
@@ -289,7 +305,7 @@ class ExtractorTests(unittest.TestCase):
 
         second = first_group["matches"][1]
         self.assertEqual(second["thread_id"], "111111111111111")
-        self.assertEqual(second["match_id"], _build_match_id("111111111111111", 13))
+        self.assertEqual(second["match_id"], _build_match_id("111111111111111", 14))
         self.assertEqual(second["flow_status"], "failed")
         self.assertEqual(second["retry_count"], 1)
         self.assertEqual(second["verifier_failures"], ["second call verifier failure"])
@@ -301,8 +317,8 @@ class ExtractorTests(unittest.TestCase):
         second_group = report["questions"][1]
         self.assertEqual(second_group["question"], "毛利率是多少")
         self.assertEqual(second_group["total_matches"], 1)
-        self.assertEqual(second_group["matches"][0]["match_id"], _build_match_id("111111111111111", 28))
-        self.assertEqual(second_group["matches"][0]["flow_status"], "success")
+        self.assertEqual(second_group["matches"][0]["match_id"], _build_match_id("111111111111111", 29))
+        self.assertEqual(second_group["matches"][0]["flow_status"], "unknown")
         self.assertEqual(second_group["matches"][0]["retry_count"], 0)
         self.assertEqual(second_group["matches"][0]["verifier_failures"], [])
 
@@ -335,7 +351,7 @@ class ExtractorTests(unittest.TestCase):
 
         second = first_group["matches"][1]
         self.assertEqual(second["thread_id"], "101010101010101")
-        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 24))
+        self.assertEqual(second["match_id"], _build_match_id("101010101010101", 25))
         self.assertEqual(second["anchor_timestamp"], "2026-04-05 09:05:00.001")
         self.assertIn("sql_template_match hit query: 近7天销售额是多少", second["anchor_line"])
         self.assertEqual(second["associated_thread_ids"], ["404040404040404"])
@@ -443,11 +459,13 @@ class ExtractorTests(unittest.TestCase):
 
         self.assertIn("nav-status nav-status-success", html)
         self.assertIn("nav-status nav-status-failed", html)
+        self.assertIn("nav-status nav-status-unknown", html)
         self.assertIn('class="nav-retry-badge">2</span>', html)
         self.assertIn('class="nav-retry-badge">1</span>', html)
         self.assertIn('class="nav-retry-badge">0</span>', html)
         self.assertIn("流程状态：成功", html)
         self.assertIn("流程状态：失败", html)
+        self.assertIn("流程状态：未知", html)
         self.assertIn("重试次数：2", html)
         self.assertIn("重试次数：1", html)
         self.assertIn("重试记录", html)

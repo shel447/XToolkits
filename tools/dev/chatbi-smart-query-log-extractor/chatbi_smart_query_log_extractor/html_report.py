@@ -150,6 +150,10 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--danger-fg);
       background: #ffe3e3;
     }}
+    .nav-status-unknown {{
+      color: #66758c;
+      background: #edf1f7;
+    }}
     .nav-retry-badge {{
       position: absolute;
       top: -6px;
@@ -225,6 +229,11 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--danger-fg);
       background: #ffe3e3;
       border-color: #efb0b0;
+    }}
+    .status-chip-unknown {{
+      color: #516074;
+      background: #edf1f7;
+      border-color: #cbd5e1;
     }}
     .collapsible {{
       margin-top: 18px;
@@ -683,8 +692,15 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
 
 def _render_nav_match_link(anchor_id: str, match: dict[str, Any]) -> str:
     status = match.get("flow_status", "success")
-    icon = "✓" if status == "success" else "✗"
-    status_class = "nav-status-success" if status == "success" else "nav-status-failed"
+    if status == "success":
+        icon = "✓"
+        status_class = "nav-status-success"
+    elif status == "failed":
+        icon = "✗"
+        status_class = "nav-status-failed"
+    else:
+        icon = "?"
+        status_class = "nav-status-unknown"
     return (
         f'<a class="nav-match-link" href="#{escape(anchor_id)}">'
         f'<span class="nav-status {status_class}">'
@@ -698,8 +714,15 @@ def _render_nav_match_link(anchor_id: str, match: dict[str, Any]) -> str:
 
 def _render_status_summary(match: dict[str, Any]) -> str:
     flow_status = match.get("flow_status", "success")
-    flow_label = "成功" if flow_status == "success" else "失败"
-    status_class = "status-chip-success" if flow_status == "success" else "status-chip-failed"
+    if flow_status == "success":
+        flow_label = "成功"
+        status_class = "status-chip-success"
+    elif flow_status == "failed":
+        flow_label = "失败"
+        status_class = "status-chip-failed"
+    else:
+        flow_label = "未知"
+        status_class = "status-chip-unknown"
     return f"""
     <section class="status-summary">
       <span class="status-chip {status_class}">流程状态：{flow_label}</span>

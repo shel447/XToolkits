@@ -21,6 +21,7 @@ field grand_metric
 @dataclass
 class GrandIR:
 tables = get_tables_columns(table_exprs)
+2026-04-05 09:00:00.115 [INFO] [303030303030303] sqlflow res: sql: SELECT * FROM grand_sales
 2026-04-05 09:05:00.001 [INFO] [101010101010101] sql_template_match hit query: 近7天销售额是多少
 2026-04-05 09:05:00.010 [INFO] [101010101010101] call sqlflow input: 请帮我统计最近7天销售额
 2026-04-05 09:05:00.018 [INFO] [404040404040404] MASK QUESTION: 请帮我统计最近7天销售额
