@@ -6,6 +6,23 @@ from html import escape
 from typing import Any
 
 
+FLOW_NODE_SPECS = [
+    {"key": "extract_question", "label": "1 提取用户问题", "meta": "锚点"},
+    {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "预处理"},
+    {"key": "preprocess_knowledge", "label": "2.2 预处理知识", "meta": "预处理"},
+    {"key": "preprocess_decision", "label": "2.3 预处理判定", "meta": "预处理"},
+    {"key": "mask_question", "label": "3.1 标准化问题", "meta": "Text2Data"},
+    {"key": "sql_knowledge", "label": "3.2 SQL 生成知识", "meta": "Text2Data"},
+    {"key": "sql_rewrite", "label": "3.3 SQL 改写", "meta": "Text2Data"},
+    {"key": "recalled_tables", "label": "3.4 表检索", "meta": "Text2Data"},
+    {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "Text2Data"},
+    {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "Text2Data"},
+    {"key": "verifier", "label": "3.7 校验", "meta": "Text2Data"},
+    {"key": "generated_ir", "label": "3.8 生成 IR", "meta": "Text2Data"},
+    {"key": "end", "label": "4 结束", "meta": "结果"},
+]
+
+
 def render_html(report: dict[str, Any]) -> str:
     source_log = escape(report["source_log"])
     generated_at = escape(report["generated_at"])
@@ -323,6 +340,176 @@ def render_html(report: dict[str, Any]) -> str:
       gap: 10px;
       margin-bottom: 16px;
     }}
+    .flow-diagram {{
+      margin-bottom: 16px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #fbfdff 0%, #f4f8ff 100%);
+      overflow: hidden;
+    }}
+    .flow-diagram h3 {{
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: #344760;
+    }}
+    .flow-diagram-track {{
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      overflow-x: auto;
+      padding: 4px 2px 8px;
+    }}
+    .flow-node {{
+      position: relative;
+      flex: 0 0 148px;
+      min-width: 148px;
+    }}
+    .flow-node-button {{
+      width: 100%;
+      min-height: 86px;
+      padding: 12px 12px 10px;
+      border: 1px solid #cfd8e6;
+      border-radius: 14px;
+      background: #ffffff;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+    }}
+    .flow-node-button:hover,
+    .flow-node-button:focus-visible {{
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10);
+      outline: none;
+    }}
+    .flow-node-index {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #edf2fb;
+      color: #43546b;
+      font-size: 11px;
+      font-weight: 700;
+    }}
+    .flow-node-title {{
+      display: block;
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 700;
+    }}
+    .flow-node-meta {{
+      display: block;
+      margin-top: 6px;
+      color: #607086;
+      font-size: 11px;
+      line-height: 1.35;
+    }}
+    .flow-node-complete .flow-node-button {{
+      border-color: #9fd0c6;
+      background: #f3fbf8;
+    }}
+    .flow-node-complete .flow-node-index {{
+      background: #dff6f0;
+      color: var(--success-fg);
+    }}
+    .flow-node-success .flow-node-button {{
+      border-color: #7bcdb8;
+      background: linear-gradient(180deg, #effcf8 0%, #dcf7ef 100%);
+    }}
+    .flow-node-success .flow-node-index {{
+      background: #ccefe4;
+      color: var(--success-fg);
+    }}
+    .flow-node-failed .flow-node-button {{
+      border-color: #e6a8a8;
+      background: linear-gradient(180deg, #fff5f5 0%, #ffe3e3 100%);
+    }}
+    .flow-node-failed .flow-node-index {{
+      background: #ffd5d5;
+      color: var(--danger-fg);
+    }}
+    .flow-node-reject .flow-node-button {{
+      border-color: #ebc46c;
+      background: linear-gradient(180deg, #fff9e9 0%, #fff1c9 100%);
+    }}
+    .flow-node-reject .flow-node-index {{
+      background: #ffe8a6;
+      color: var(--reject-fg);
+    }}
+    .flow-node-follow-up .flow-node-button {{
+      border-color: #afc9f7;
+      background: linear-gradient(180deg, #f4f8ff 0%, #e5efff 100%);
+    }}
+    .flow-node-follow-up .flow-node-index {{
+      background: #d6e6ff;
+      color: var(--follow-fg);
+    }}
+    .flow-node-unknown .flow-node-button {{
+      border-color: #d8dee8;
+      background: #f3f5f8;
+      color: #7b8796;
+    }}
+    .flow-node-unknown .flow-node-index {{
+      background: #e3e8ef;
+      color: #6c7786;
+    }}
+    .flow-connector {{
+      flex: 0 0 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #9aa8ba;
+      font-size: 18px;
+      font-weight: 700;
+    }}
+    .flow-tooltip {{
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      width: min(360px, 72vw);
+      padding: 0;
+      border: 1px solid #d1dae8;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(4px);
+      transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+      z-index: 18;
+      pointer-events: none;
+      overflow: hidden;
+    }}
+    .flow-node:hover .flow-tooltip,
+    .flow-node:focus-within .flow-tooltip,
+    .flow-node.flow-node-open .flow-tooltip {{
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }}
+    .flow-tooltip-header {{
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #e4ebf5;
+      background: #f7faff;
+      font-size: 12px;
+      font-weight: 700;
+      color: #38506e;
+    }}
+    .flow-tooltip pre {{
+      max-height: 240px;
+      padding: 12px;
+      border-radius: 0;
+      background: transparent;
+      color: #223247;
+      overflow: auto;
+      white-space: pre-wrap;
+    }}
     .status-chip {{
       display: inline-flex;
       align-items: center;
@@ -624,6 +811,22 @@ def render_html(report: dict[str, Any]) -> str:
         max-height: none;
         overflow-y: visible;
       }}
+      .flow-diagram-track {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        overflow: visible;
+      }}
+      .flow-node {{
+        min-width: 0;
+        flex: initial;
+      }}
+      .flow-connector {{
+        display: none;
+      }}
+      .flow-tooltip {{
+        width: min(92vw, 360px);
+      }}
       .settings-fab {{
         right: 10px;
         bottom: 10px;
@@ -821,6 +1024,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     const DETAIL_FIELD_OPTIONS = [
+      {{ key: 'flow_diagram', label: '流程图' }},
       {{ key: 'status_summary', label: '流程状态' }},
       {{ key: 'anchor_line', label: '命中锚点日志' }},
       {{ key: 'ac_enriched_question', label: 'AC 补充问题' }},
@@ -967,7 +1171,50 @@ def render_html(report: dict[str, Any]) -> str:
       document.addEventListener('keydown', (event) => {{
         if (event.key === 'Escape') {{
           setSettingsPanelOpen(false);
+          closeOpenFlowTooltips();
         }}
+      }});
+    }}
+
+    function closeOpenFlowTooltips() {{
+      document.querySelectorAll('.flow-node.flow-node-open').forEach((node) => {{
+        node.classList.remove('flow-node-open');
+        const button = node.querySelector('[data-flow-node-button]');
+        if (button) {{
+          button.setAttribute('aria-expanded', 'false');
+        }}
+      }});
+    }}
+
+    function initFlowTooltips() {{
+      document.querySelectorAll('[data-flow-node-button]').forEach((button) => {{
+        button.addEventListener('click', (event) => {{
+          event.preventDefault();
+          event.stopPropagation();
+          const node = button.closest('.flow-node');
+          if (!node) {{
+            return;
+          }}
+          const willOpen = !node.classList.contains('flow-node-open');
+          closeOpenFlowTooltips();
+          if (willOpen) {{
+            node.classList.add('flow-node-open');
+            button.setAttribute('aria-expanded', 'true');
+          }} else {{
+            button.setAttribute('aria-expanded', 'false');
+          }}
+        }});
+      }});
+
+      document.addEventListener('click', (event) => {{
+        const target = event.target;
+        if (!(target instanceof Node)) {{
+          return;
+        }}
+        if (target instanceof Element && target.closest('.flow-node')) {{
+          return;
+        }}
+        closeOpenFlowTooltips();
       }});
     }}
 
@@ -1054,6 +1301,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     function initializePage() {{
       initSettingsPanel();
+      initFlowTooltips();
       updateActiveNavLinks();
       syncNavToViewport();
     }}
@@ -1159,6 +1407,43 @@ def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> st
     """
 
 
+def _render_flow_diagram_section(anchor_id: str, match: dict[str, Any]) -> str:
+    nodes = _build_flow_nodes(match)
+    parts = []
+    for index, node in enumerate(nodes):
+        node_id = f"flow-node-{anchor_id}-{node['key'].replace('_', '-')}"
+        parts.append(_render_flow_node(node_id, node))
+        if index < len(nodes) - 1:
+            parts.append('<div class="flow-connector" aria-hidden="true">→</div>')
+    return f"""
+    <section class="flow-diagram">
+      <h3>调用流程图</h3>
+      <div class="flow-diagram-track">{''.join(parts)}</div>
+    </section>
+    """
+
+
+def _render_flow_node(node_id: str, node: dict[str, str]) -> str:
+    tooltip = escape(node["detail"])
+    title = escape(node["label"])
+    meta = escape(node["meta"])
+    status = escape(node["status"])
+    key = escape(node["key"].replace("_", "-"))
+    return f"""
+    <div id="{escape(node_id)}" class="flow-node flow-node-{status}" data-flow-node-key="{key}">
+      <button type="button" class="flow-node-button" data-flow-node-button aria-expanded="false">
+        <span class="flow-node-index">{escape(node["index"])}</span>
+        <span class="flow-node-title">{title}</span>
+        <span class="flow-node-meta">{meta}</span>
+      </button>
+      <div class="flow-tooltip" role="tooltip">
+        <div class="flow-tooltip-header">{title}</div>
+        <pre>{tooltip}</pre>
+      </div>
+    </div>
+    """
+
+
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     title = f"{match['anchor_timestamp']} | 线程 {match['thread_id']} | 第 {match['index']} 次调用"
     associated_threads = match.get("associated_thread_ids", [])
@@ -1188,6 +1473,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         or ("sql_generation_knowledge" in skipped_sections and "few_shot_knowledge" in skipped_sections)
     )
     sections = [
+        _wrap_config_item("flow_diagram", _render_flow_diagram_section(anchor_id, match)),
         _wrap_config_item("status_summary", _render_status_summary(match)),
     ]
     sections.extend([
@@ -1276,6 +1562,295 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
       {''.join(sections)}
     </section>
     """
+
+
+def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
+    preprocess_knowledge_text = _format_preprocess_knowledge_tooltip(match.get("preprocess_knowledge", {}))
+    sql_knowledge_text = _format_sql_knowledge_tooltip(match.get("sql_knowledge", {}))
+    sql_rewrite_text = _format_sql_rewrite_tooltip(match)
+    verifier_text = _format_verifier_tooltip(match)
+    end_text = _format_end_tooltip(match)
+
+    direct = {
+        "extract_question": bool(str(match.get("question", "")).strip() or str(match.get("anchor_line", "")).strip()),
+        "ac_enriched_question": bool(str(match.get("ac_enriched_question", "")).strip()),
+        "preprocess_knowledge": bool(preprocess_knowledge_text),
+        "preprocess_decision": bool(str(match.get("preprocess_decision", "")).strip()),
+        "mask_question": bool(str(match.get("mask_question", "")).strip()),
+        "sql_knowledge": bool(sql_knowledge_text),
+        "sql_rewrite": bool(sql_rewrite_text),
+        "recalled_tables": bool(match.get("recalled_tables")),
+        "ir_table_definition": bool(str(match.get("ir_table_definition", "")).strip()),
+        "final_prompt": bool(
+            str(match.get("final_prompt", {}).get("combined", "")).strip()
+            or str(match.get("final_prompt", {}).get("raw", "")).strip()
+        ),
+        "verifier": bool(match.get("verifier_failures")),
+        "generated_ir": bool(str(match.get("generated_ir", "")).strip()),
+        "end": str(match.get("flow_status", "unknown")) in {"success", "failed"},
+    }
+
+    reached = {
+        "extract_question": direct["extract_question"],
+        "ac_enriched_question": direct["ac_enriched_question"] or any(
+            direct[key]
+            for key in [
+                "preprocess_knowledge",
+                "preprocess_decision",
+                "mask_question",
+                "sql_knowledge",
+                "sql_rewrite",
+                "recalled_tables",
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "preprocess_knowledge": direct["preprocess_knowledge"] or any(
+            direct[key]
+            for key in [
+                "preprocess_decision",
+                "mask_question",
+                "sql_knowledge",
+                "sql_rewrite",
+                "recalled_tables",
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "preprocess_decision": direct["preprocess_decision"] or any(
+            direct[key]
+            for key in [
+                "mask_question",
+                "sql_knowledge",
+                "sql_rewrite",
+                "recalled_tables",
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "mask_question": direct["mask_question"] or any(
+            direct[key]
+            for key in [
+                "sql_knowledge",
+                "sql_rewrite",
+                "recalled_tables",
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "sql_knowledge": direct["sql_knowledge"] or any(
+            direct[key]
+            for key in [
+                "sql_rewrite",
+                "recalled_tables",
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "sql_rewrite": direct["sql_rewrite"] or any(
+            direct[key]
+            for key in [
+                "recalled_tables",
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "recalled_tables": direct["recalled_tables"] or any(
+            direct[key]
+            for key in [
+                "ir_table_definition",
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "ir_table_definition": direct["ir_table_definition"] or any(
+            direct[key]
+            for key in [
+                "final_prompt",
+                "generated_ir",
+            ]
+        ),
+        "final_prompt": direct["final_prompt"] or direct["generated_ir"],
+        "verifier": direct["verifier"] or direct["generated_ir"] or (direct["end"] and direct["final_prompt"]),
+        "generated_ir": direct["generated_ir"],
+        "end": direct["end"],
+    }
+
+    details = {
+        "extract_question": _format_extract_question_tooltip(match),
+        "ac_enriched_question": str(match.get("ac_enriched_question", "")).strip(),
+        "preprocess_knowledge": preprocess_knowledge_text,
+        "preprocess_decision": _format_preprocess_decision_tooltip(match),
+        "mask_question": str(match.get("mask_question", "")).strip(),
+        "sql_knowledge": sql_knowledge_text,
+        "sql_rewrite": sql_rewrite_text,
+        "recalled_tables": _format_list_tooltip(match.get("recalled_tables", [])),
+        "ir_table_definition": str(match.get("ir_table_definition", "")).strip(),
+        "final_prompt": str(match.get("final_prompt", {}).get("combined", "")).strip() or str(match.get("final_prompt", {}).get("raw", "")).strip(),
+        "verifier": verifier_text,
+        "generated_ir": str(match.get("generated_ir", "")).strip(),
+        "end": end_text,
+    }
+
+    flow_status = str(match.get("flow_status", "unknown"))
+    preprocess_decision = str(match.get("preprocess_decision", "")).strip()
+    nodes: list[dict[str, str]] = []
+    for spec in FLOW_NODE_SPECS:
+        key = spec["key"]
+        status = "complete" if reached.get(key) else "unknown"
+        if key == "preprocess_decision":
+            if preprocess_decision == "reject_request":
+                status = "reject"
+            elif preprocess_decision == "ask_human":
+                status = "follow-up"
+        elif key == "verifier" and flow_status == "failed" and match.get("verifier_failures"):
+            status = "failed"
+        elif key == "end":
+            if flow_status == "success":
+                status = "success"
+            elif flow_status == "failed":
+                status = "failed"
+            else:
+                status = "unknown"
+
+        detail = details.get(key, "").strip()
+        if not detail:
+            detail = "已到达，未提取到详情" if reached.get(key) else "未命中该步骤"
+
+        nodes.append(
+            {
+                "key": key,
+                "label": spec["label"],
+                "meta": spec["meta"],
+                "index": spec["label"].split(" ", 1)[0],
+                "status": status,
+                "detail": detail,
+            }
+        )
+    return nodes
+
+
+def _format_extract_question_tooltip(match: dict[str, Any]) -> str:
+    parts = [
+        f"问题: {str(match.get('question', '')).strip()}",
+        f"时间: {str(match.get('anchor_timestamp', '')).strip()}",
+        "",
+        "锚点日志:",
+        str(match.get("anchor_line", "")).strip(),
+    ]
+    return "\n".join(part for part in parts if part is not None).strip()
+
+
+def _format_preprocess_knowledge_tooltip(preprocess_knowledge: dict[str, Any]) -> str:
+    if not isinstance(preprocess_knowledge, dict):
+        return ""
+    chunks = []
+    rewrite_text = _format_knowledge_bundle(preprocess_knowledge.get("rewrite"))
+    if rewrite_text:
+        chunks.append(f"问题改写:\n{rewrite_text}")
+    reject_values = _format_list_tooltip(preprocess_knowledge.get("reject", []))
+    if reject_values:
+        chunks.append(f"拒答:\n{reject_values}")
+    follow_up_values = _format_list_tooltip(preprocess_knowledge.get("follow_up", []))
+    if follow_up_values:
+        chunks.append(f"追问:\n{follow_up_values}")
+    return "\n\n".join(chunks).strip()
+
+
+def _format_sql_knowledge_tooltip(sql_knowledge: dict[str, Any]) -> str:
+    if not isinstance(sql_knowledge, dict):
+        return ""
+    chunks = []
+    generation_text = _format_knowledge_bundle(sql_knowledge.get("generation"))
+    if generation_text:
+        chunks.append(f"生成逻辑:\n{generation_text}")
+    few_shot_text = _format_knowledge_bundle(sql_knowledge.get("few_shot"))
+    if few_shot_text:
+        chunks.append(f"Few-shot:\n{few_shot_text}")
+    return "\n\n".join(chunks).strip()
+
+
+def _format_sql_rewrite_tooltip(match: dict[str, Any]) -> str:
+    chunks = []
+    rewritten_question = str(match.get("sql_rewritten_question", "") or match.get("rewritten_question", "")).strip()
+    prompt_json = str(match.get("sql_rewrite_prompt_json", "")).strip()
+    if rewritten_question:
+        chunks.append(f"改写结果:\n{rewritten_question}")
+    if prompt_json:
+        chunks.append(f"改写提示词:\n{prompt_json}")
+    return "\n\n".join(chunks).strip()
+
+
+def _format_preprocess_decision_tooltip(match: dict[str, Any]) -> str:
+    decision = str(match.get("preprocess_decision", "")).strip()
+    decision_label = {
+        "data_query": "DataQuery",
+        "reject_request": "RejectRequest",
+        "ask_human": "AskHuman",
+    }.get(decision, decision or "-")
+    rewritten_question = str(match.get("preprocess_rewritten_question", "")).strip()
+    parts = [f"判定: {decision_label}"]
+    if rewritten_question:
+        parts.append(f"预处理改写:\n{rewritten_question}")
+    if decision in {"reject_request", "ask_human"}:
+        parts.append("流程在该节点终止，后续步骤未执行。")
+    return "\n\n".join(parts).strip()
+
+
+def _format_verifier_tooltip(match: dict[str, Any]) -> str:
+    retry_count = int(match.get("retry_count", 0) or 0)
+    failures = [str(item).strip() for item in match.get("verifier_failures", []) if str(item).strip()]
+    parts = [f"重试次数: {retry_count}"]
+    if failures:
+        parts.append("失败原因:\n" + "\n".join(failures))
+    return "\n\n".join(parts).strip()
+
+
+def _format_end_tooltip(match: dict[str, Any]) -> str:
+    flow_status = str(match.get("flow_status", "unknown"))
+    if flow_status == "success":
+        sql_summary = _extract_sql_summary(match)
+        if sql_summary:
+            return f"流程状态: 成功\n\nSQL 摘要:\n{sql_summary}"
+        return "流程状态: 成功\n\n未提取到 SQL 摘要"
+    if flow_status == "failed":
+        failures = [str(item).strip() for item in match.get("verifier_failures", []) if str(item).strip()]
+        if failures:
+            return "流程状态: 失败\n\n校验失败原因:\n" + "\n".join(failures)
+        return "流程状态: 失败"
+    if flow_status == "reject":
+        return "流程状态: 拒答\n\n流程在预处理阶段终止。"
+    if flow_status == "follow_up":
+        return "流程状态: 追问\n\n流程在预处理阶段终止。"
+    return "流程状态: 未知\n\n未命中结束信号，流程可能中断或服务重启。"
+
+
+def _extract_sql_summary(match: dict[str, Any]) -> str:
+    candidates = [
+        str(match.get("complete_ir", "")),
+        str(match.get("generated_ir", "")),
+    ]
+    prefixes = ("SELECT", "WITH", "INSERT", "UPDATE", "DELETE")
+    for candidate in candidates:
+        for raw_line in candidate.splitlines():
+            line = raw_line.strip()
+            upper_line = line.upper()
+            if line and upper_line.startswith(prefixes):
+                return line
+    return ""
+
+
+def _format_list_tooltip(items: Any) -> str:
+    if not isinstance(items, list):
+        return ""
+    values = [str(item).strip() for item in items if str(item).strip()]
+    return "\n".join(values)
 
 
 def _render_nav_match_link(anchor_id: str, match: dict[str, Any], question_anchor_id: str) -> str:
