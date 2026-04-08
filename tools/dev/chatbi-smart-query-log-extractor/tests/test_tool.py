@@ -80,6 +80,36 @@ class UnknownIR:
 tables = get_tables_columns(table_exprs)
 """
 
+INTERLEAVED_CHILD_LOG = """2026-04-06 09:00:00.001 [INFO] [811111111111111] sql_template_match hit query: Q1
+2026-04-06 09:00:00.002 [INFO] [811111111111111] call sqlflow input: R1
+2026-04-06 09:00:00.003 [INFO] [911111111111111] MASK QUESTION: R1
+2026-04-06 09:00:00.004 [INFO] [911111111111111] knowledge retriever success retrieved docs: q1_doc
+2026-04-06 09:00:00.101 [INFO] [811111111111111] sql_template_match hit query: Q2
+2026-04-06 09:00:00.102 [INFO] [811111111111111] call sqlflow input: R2
+2026-04-06 09:00:00.103 [INFO] [922222222222222] MASK QUESTION: R2
+2026-04-06 09:00:00.104 [INFO] [922222222222222] knowledge retriever success retrieved docs: q2_doc
+2026-04-06 09:00:00.105 [INFO] [911111111111111] 召回表: q1_table
+2026-04-06 09:00:00.106 [INFO] [911111111111111] 表定义的IR：table q1_table(id)
+field q1_metric
+2026-04-06 09:00:00.107 [INFO] [911111111111111] code guardrail check result safe
+2026-04-06 09:00:00.108 [INFO] [911111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'q1 system'}, {'role': 'user', 'content': 'q1 user'}]}
+2026-04-06 09:00:00.109 [INFO] [911111111111111] 最终的IR
+@dataclass
+class Q1IR:
+tables = get_tables_columns(table_exprs)
+2026-04-06 09:00:00.110 [INFO] [911111111111111] sqlflow res: sql: SELECT * FROM q1_table
+2026-04-06 09:00:00.111 [INFO] [922222222222222] 召回表: q2_table
+2026-04-06 09:00:00.112 [INFO] [922222222222222] 表定义的IR：table q2_table(id)
+field q2_metric
+2026-04-06 09:00:00.113 [INFO] [922222222222222] code guardrail check result safe
+2026-04-06 09:00:00.114 [INFO] [922222222222222] 生成器任务：{'messages': [{'role': 'system', 'content': 'q2 system'}, {'role': 'user', 'content': 'q2 user'}]}
+2026-04-06 09:00:00.115 [INFO] [922222222222222] 最终的IR
+@dataclass
+class Q2IR:
+tables = get_tables_columns(table_exprs)
+2026-04-06 09:00:00.116 [INFO] [922222222222222] sqlflow res: sql: SELECT * FROM q2_table
+"""
+
 def _build_ir_only_report(
     complete_ir: str,
     thread_id: str = "823456789012345",
@@ -373,6 +403,29 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(first["recalled_tables"], [])
         self.assertEqual(first["ir_table_definition"], "")
         self.assertIn("rag_results", first["missing_sections"])
+
+    def test_extract_report_keeps_child_segments_when_logs_interleave_between_calls(self) -> None:
+        report = extract_report(INTERLEAVED_CHILD_LOG, "interleaved.log")
+
+        self.assertEqual(report["total_questions"], 2)
+
+        first_group = report["questions"][0]
+        self.assertEqual(first_group["question"], "Q1")
+        first_match = first_group["matches"][0]
+        self.assertEqual(first_match["associated_thread_ids"], ["911111111111111"])
+        self.assertEqual(first_match["flow_status"], "success")
+        self.assertIn("q1_table", first_match["recalled_tables"])
+        self.assertIn("table q1_table(id)", first_match["ir_table_definition"])
+        self.assertIn("class Q1IR:", first_match["generated_ir"])
+
+        second_group = report["questions"][1]
+        self.assertEqual(second_group["question"], "Q2")
+        second_match = second_group["matches"][0]
+        self.assertEqual(second_match["associated_thread_ids"], ["922222222222222"])
+        self.assertEqual(second_match["flow_status"], "success")
+        self.assertIn("q2_table", second_match["recalled_tables"])
+        self.assertIn("table q2_table(id)", second_match["ir_table_definition"])
+        self.assertIn("class Q2IR:", second_match["generated_ir"])
 
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")

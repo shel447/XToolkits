@@ -92,7 +92,6 @@ def has_partial_failures(report: dict[str, Any]) -> bool:
 
 def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
     last_anchor_by_thread: dict[str, dict[str, Any]] = {}
-    open_match_id_by_root_thread: dict[str, str] = {}
     thread_to_match_id: dict[str, str] = {}
     raw_matches_by_id: dict[str, dict[str, Any]] = {}
     ordered_match_ids: list[str] = []
@@ -115,17 +114,27 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
 
         if MASK_QUESTION_KEYWORD in line:
             existing_match_id = thread_to_match_id.get(thread_id)
-            if existing_match_id is None:
-                match_id = _find_open_match_by_mask_question_line(
-                    ordered_match_ids,
-                    raw_matches_by_id,
-                    line,
-                )
-                if match_id is not None:
-                    raw_match = raw_matches_by_id[match_id]
-                    if raw_match["thread_id"] != thread_id:
-                        _associate_thread_to_match(raw_match, thread_id, line_number)
-                        thread_to_match_id[thread_id] = match_id
+            match_id = _find_open_match_by_mask_question_line(
+                ordered_match_ids,
+                raw_matches_by_id,
+                line,
+            )
+            if match_id is not None and match_id != existing_match_id:
+                if existing_match_id is not None:
+                    current_raw_match = raw_matches_by_id.get(existing_match_id)
+                    if current_raw_match is not None:
+                        _close_match_thread_segment(current_raw_match, thread_id, line_number)
+                        if thread_to_match_id.get(thread_id) == existing_match_id:
+                            thread_to_match_id.pop(thread_id, None)
+                        _finalize_match_if_inactive(
+                            current_raw_match,
+                            line_number,
+                            thread_to_match_id,
+                        )
+                raw_match = raw_matches_by_id[match_id]
+                if raw_match["thread_id"] != thread_id:
+                    _associate_thread_to_match(raw_match, thread_id, line_number)
+                    thread_to_match_id[thread_id] = match_id
 
         if CALL_SQLFLOW_INPUT_KEYWORD not in line:
             continue
@@ -149,7 +158,6 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
             )
             raw_matches_by_id[raw_match["match_id"]] = raw_match
             ordered_match_ids.append(raw_match["match_id"])
-            open_match_id_by_root_thread[thread_id] = raw_match["match_id"]
             thread_to_match_id[thread_id] = raw_match["match_id"]
             continue
 
@@ -166,11 +174,13 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
                 if next_anchor["line_number"] > current_match["line_number"]
                 else line_number
             )
-            _close_raw_match(
+            _close_match_thread_segment(current_match, thread_id, next_call_start_line_number)
+            if thread_to_match_id.get(thread_id) == current_match_id:
+                thread_to_match_id.pop(thread_id, None)
+            _finalize_match_if_inactive(
                 current_match,
                 next_call_start_line_number,
                 thread_to_match_id,
-                open_match_id_by_root_thread,
             )
             raw_match = _open_root_match(
                 thread_id=thread_id,
@@ -182,7 +192,6 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
             )
             raw_matches_by_id[raw_match["match_id"]] = raw_match
             ordered_match_ids.append(raw_match["match_id"])
-            open_match_id_by_root_thread[thread_id] = raw_match["match_id"]
             thread_to_match_id[thread_id] = raw_match["match_id"]
             continue
 
@@ -192,7 +201,7 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
     for match_id in ordered_match_ids:
         raw_match = raw_matches_by_id[match_id]
         if raw_match["end_line_number"] is None:
-            _close_raw_match(raw_match, file_end_line_number, thread_to_match_id, open_match_id_by_root_thread)
+            _close_raw_match(raw_match, file_end_line_number, thread_to_match_id)
 
     return [
         _build_cross_thread_match(index + 1, raw_matches_by_id[match_id], lines)
@@ -248,7 +257,6 @@ def _close_raw_match(
     raw_match: dict[str, Any],
     end_line_number: int,
     thread_to_match_id: dict[str, str],
-    open_match_id_by_root_thread: dict[str, str],
 ) -> None:
     raw_match["end_line_number"] = end_line_number
     for thread_id, segments in raw_match["segments"].items():
@@ -256,7 +264,26 @@ def _close_raw_match(
             segments[-1]["end_line_number"] = end_line_number
         if thread_to_match_id.get(thread_id) == raw_match["match_id"]:
             thread_to_match_id.pop(thread_id, None)
-    open_match_id_by_root_thread.pop(raw_match["thread_id"], None)
+
+
+def _close_match_thread_segment(raw_match: dict[str, Any], thread_id: str, end_line_number: int) -> None:
+    segments = raw_match["segments"].get(thread_id) or []
+    if not segments:
+        return
+    if segments[-1]["end_line_number"] is None:
+        segments[-1]["end_line_number"] = end_line_number
+
+
+def _finalize_match_if_inactive(
+    raw_match: dict[str, Any],
+    end_line_number: int,
+    thread_to_match_id: dict[str, str],
+) -> None:
+    match_id = raw_match["match_id"]
+    if any(active_match_id == match_id for active_match_id in thread_to_match_id.values()):
+        return
+    if raw_match["end_line_number"] is None:
+        raw_match["end_line_number"] = end_line_number
 
 
 def _associate_thread_to_match(raw_match: dict[str, Any], thread_id: str, line_number: int) -> None:
