@@ -132,14 +132,14 @@ resulted_sql = to_sql(intent_result)
 ## Limitations
 
 - 问题文本按字面值精确匹配，不做模糊匹配或同义改写
-- 自动发现问题仍基于 `sql_template_match` 的 `query:`；如果日志中存在 `call sqlflow input:`，工具会把它作为主调用边界；跨子线程归因时不再依赖子线程里的 `sql_template_match query`，而是使用子线程日志中的完整标记 `MARK QUESTION: {改写后的问题}` 去匹配主调用里的改写问题链。页面展示的锚点时间、锚点日志和 `match_id` 仍然使用原始命中问题的那条 `sql_template_match`
+- 自动发现问题仍基于 `sql_template_match` 的 `query:`；如果日志中存在 `call sqlflow input:`，工具会把它作为主调用边界；跨子线程归因时不再依赖子线程里的 `sql_template_match query`，而是使用子线程日志中的完整标记 `MASK QUESTION: {改写后的问题}` 去匹配主调用里的改写问题链。页面展示的锚点时间、锚点日志和 `match_id` 仍然使用原始命中问题的那条 `sql_template_match`
 - 日志中的 15 位数字按线程 ID 处理，不作为单次请求唯一标识；跨子线程场景下，工具会输出主线程 `thread_id`、全部 `associated_thread_ids`，并继续使用主线程上的 `match_id`
 - 最终 Prompt 只识别包含 `生成器任务：` 的日志行，并兼容 JSON、Python 对象直接序列化后的单引号消息体，或直接序列化的消息数组；会分别提取前两条 message 的 `content`
 - 页面展示的最终 Prompt 是合并结果，但执行时仍使用原始两条消息一起调用，不会直接把合并后的展示文本当请求体
 - 页面执行接口和完整 IR 执行接口都按 `match_id` 定位，不再使用线程 ID 直接定位
 - 调用结果会额外提取 `verifier result: 0:` 形成 `verifier_failures`，并把出现次数记为 `retry_count`；问题导航只显示时间，但会在成功/失败图标右上角叠加重试次数数字
 - `sql_flow exception: SQL is empty` 只用于判定该次调用最终失败；详情区只保留黄色区块展示重试记录
-- 兼容字段 `rewritten_question` 现在表示该次主调用的首个 `call sqlflow input:` 内容；完整改写链路看 `rewrite_questions`。子线程是否并入当前调用，则看它的完整标记 `MARK QUESTION: {改写后的问题}` 是否命中这条改写链
+- 兼容字段 `rewritten_question` 现在表示该次主调用的首个 `call sqlflow input:` 内容；完整改写链路看 `rewrite_questions`。子线程是否并入当前调用，则看它的完整标记 `MASK QUESTION: {改写后的问题}` 是否命中这条改写链
 - 静态 HTML 适合直接双击打开查看；执行按钮、页面内切换日志文件/目录这类交互能力必须通过 `--serve` 页面使用
 - `IR 表定义` 从 `表定义的IR：` 之后开始提取，不保留关键词前缀
 - `生成 IR 结果` 从 `最终的IR` 之后开始提取，到 `tables = get_tables_columns(table_exprs)` 为止，并保留结束行

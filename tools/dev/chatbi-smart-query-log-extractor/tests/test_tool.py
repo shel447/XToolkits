@@ -344,6 +344,20 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(second["retry_count"], 1)
         self.assertEqual(second["verifier_failures"], ["second call child failure"])
 
+    def test_extract_report_does_not_associate_child_thread_without_matching_mask_question(self) -> None:
+        log_text = (FIXTURES_ROOT / "cross_thread_chatbi.log").read_text(encoding="utf-8")
+        log_text = log_text.replace("MASK QUESTION: 请帮我统计最近7天销售额", "MASK QUESTION: 其它问题", 1)
+
+        report = extract_report(log_text, "cross_thread_chatbi.log")
+
+        first_group = report["questions"][0]
+        first = first_group["matches"][0]
+        self.assertEqual(first["associated_thread_ids"], [])
+        self.assertEqual(first["rag_results"], [])
+        self.assertEqual(first["recalled_tables"], [])
+        self.assertEqual(first["ir_table_definition"], "")
+        self.assertIn("rag_results", first["missing_sections"])
+
     def test_extract_report_returns_zero_questions_when_filter_not_found(self) -> None:
         report = extract_report(FULL_LOG, "sample.log", question_filter="不存在的问题")
 

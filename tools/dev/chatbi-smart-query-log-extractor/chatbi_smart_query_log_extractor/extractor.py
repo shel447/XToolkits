@@ -25,7 +25,7 @@ PROMPT_KEYWORD = "生成器任务："
 IR_RESULT_START = "最终的IR"
 IR_RESULT_STOP = "tables = get_tables_columns(table_exprs)"
 CALL_SQLFLOW_INPUT_KEYWORD = "call sqlflow input:"
-MARK_QUESTION_KEYWORD = "MARK QUESTION:"
+MASK_QUESTION_KEYWORD = "MASK QUESTION:"
 VERIFIER_FAIL_KEYWORD = "verifier result: 0:"
 FLOW_FAIL_KEYWORD = "sql_flow exception: SQL is empty"
 
@@ -112,10 +112,10 @@ def _collect_cross_thread_matches(lines: list[str]) -> list[dict[str, Any]]:
                     "line_number": line_number,
                 }
 
-        if MARK_QUESTION_KEYWORD in line:
+        if MASK_QUESTION_KEYWORD in line:
             existing_match_id = thread_to_match_id.get(thread_id)
             if existing_match_id is None:
-                match_id = _find_open_match_by_mark_question_line(
+                match_id = _find_open_match_by_mask_question_line(
                     ordered_match_ids,
                     raw_matches_by_id,
                     line,
@@ -268,7 +268,7 @@ def _associate_thread_to_match(raw_match: dict[str, Any], thread_id: str, line_n
     )
 
 
-def _find_open_match_by_mark_question_line(
+def _find_open_match_by_mask_question_line(
     ordered_match_ids: list[str],
     raw_matches_by_id: dict[str, dict[str, Any]],
     line: str,
@@ -278,13 +278,13 @@ def _find_open_match_by_mark_question_line(
         if raw_match["end_line_number"] is not None:
             continue
         for rewrite_question in raw_match["rewrite_questions"]:
-            if _build_mark_question_marker(rewrite_question) in line:
+            if _build_mask_question_marker(rewrite_question) in line:
                 return match_id
     return None
 
 
-def _build_mark_question_marker(question: str) -> str:
-    return f"{MARK_QUESTION_KEYWORD} {question}".strip()
+def _build_mask_question_marker(question: str) -> str:
+    return f"{MASK_QUESTION_KEYWORD} {question}".strip()
 
 
 def _select_match_questions(matches: list[dict[str, Any]], question_filter: str | None) -> list[str]:
