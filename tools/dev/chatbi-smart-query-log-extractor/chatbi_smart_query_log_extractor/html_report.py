@@ -669,14 +669,6 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         ),
     ])
 
-    if match["missing_sections"]:
-        sections.append(
-            _render_list_section(
-                "缺失字段",
-                [f"{field}: 未命中该字段" for field in match["missing_sections"]],
-                kind="missing",
-            )
-        )
     if match["parse_errors"]:
         sections.append(_render_list_section("解析错误", match["parse_errors"], kind="errors"))
 
