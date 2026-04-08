@@ -138,7 +138,7 @@ resulted_sql = to_sql(intent_result)
 - 页面展示的最终 Prompt 是合并结果，但执行时仍使用原始两条消息一起调用，不会直接把合并后的展示文本当请求体
 - 页面执行接口和完整 IR 执行接口都按 `match_id` 定位，不再使用线程 ID 直接定位
 - 调用结果会额外提取 `verifier result: 0:` 形成 `verifier_failures`，并把出现次数记为 `retry_count`；问题导航只显示时间，但会在成功/失败图标右上角叠加重试次数数字
-- `sql_flow exception: SQL is empty` 只用于判定该次调用最终失败；详情区会用黄色区块展示重试记录，用红色区块展示最终失败时对应的 verifier 失败原因
+- `sql_flow exception: SQL is empty` 只用于判定该次调用最终失败；详情区只保留黄色区块展示重试记录
 - 兼容字段 `rewritten_question` 现在表示该次主调用的首个 `call sqlflow input:` 内容；完整改写链路看 `rewrite_questions`
 - 静态 HTML 适合直接双击打开查看；执行按钮、页面内切换日志文件/目录这类交互能力必须通过 `--serve` 页面使用
 - `IR 表定义` 从 `表定义的IR：` 之后开始提取，不保留关键词前缀

@@ -379,11 +379,6 @@ def render_html(report: dict[str, Any]) -> str:
       background: #fff6db;
       border-color: #f1c24b;
     }}
-    .failure-block {{
-      background: #fff0f0;
-      border-color: #ef9a9a;
-      color: #8f1d1d;
-    }}
     .missing, .errors {{
       padding: 12px 14px;
       border-radius: 12px;
@@ -641,9 +636,6 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         _render_status_summary(match),
         _render_highlight_list_section("重试记录", match["verifier_failures"], "retry-block"),
     ]
-    if match["flow_status"] == "failed":
-        failure_items = match["verifier_failures"] or ["未提取到 verifier 失败原因"]
-        sections.append(_render_highlight_list_section("最终失败原因", failure_items, "failure-block"))
     sections.extend([
         _render_text_section("命中锚点日志", match["anchor_line"]),
         _render_collapsible_list_section("RAG 检索结果", match["rag_results"]),
