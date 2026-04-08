@@ -448,7 +448,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn(".nav {", html)
         self.assertIn("width: 100%;", html)
         self.assertIn("margin: 0;", html)
-        self.assertIn("padding: 10px 12px 14px;", html)
+        self.assertIn("padding: 0;", html)
         self.assertIn("box-sizing: border-box;", html)
         self.assertIn(".summary-grid {", html)
         self.assertIn("grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));", html)

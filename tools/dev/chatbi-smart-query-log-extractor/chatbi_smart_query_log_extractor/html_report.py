@@ -64,7 +64,7 @@ def render_html(report: dict[str, Any]) -> str:
     .page {{
       width: 100%;
       margin: 0;
-      padding: 10px 12px 14px;
+      padding: 0;
       box-sizing: border-box;
     }}
     .summary, .match, .empty {{
