@@ -186,7 +186,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: 260px minmax(420px, 1.2fr) minmax(360px, 0.95fr);
+      grid-template-columns: 260px minmax(0, 1fr);
       gap: 12px;
       align-items: start;
     }}
@@ -295,15 +295,76 @@ def render_html(report: dict[str, Any]) -> str:
     .nav-match-time {{
       color: var(--text);
     }}
+    .workspace {{
+      position: sticky;
+      top: 12px;
+      max-height: calc(100vh - 24px);
+      min-width: 0;
+    }}
+    .workspace-shell {{
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: calc(100vh - 24px);
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }}
+    .content-tabs {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #e3eaf4;
+      background: linear-gradient(180deg, #ffffff 0%, #f3f7ff 100%);
+    }}
+    .content-tabs-title {{
+      margin-right: auto;
+      font-size: 13px;
+      font-weight: 700;
+      color: #334a67;
+    }}
+    .content-tab {{
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid #d1dceb;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #41566f;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .content-tab[hidden] {{
+      display: none;
+    }}
+    .content-tab.content-tab-active {{
+      background: #e8f5f2;
+      border-color: #9ad8cb;
+      color: var(--accent);
+    }}
+    .content-panels {{
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+    }}
+    .content-panel[hidden] {{
+      display: none;
+    }}
+    .content-panel-body {{
+      min-height: 0;
+      max-height: calc(100vh - 92px);
+      overflow: auto;
+      padding: 12px;
+      box-sizing: border-box;
+    }}
     .detail-column {{
       display: grid;
       gap: 14px;
       min-width: 0;
     }}
     .flow-stage {{
-      position: sticky;
-      top: 12px;
-      max-height: calc(100vh - 24px);
       min-width: 0;
     }}
     .flow-stage[hidden] {{
@@ -312,7 +373,7 @@ def render_html(report: dict[str, Any]) -> str:
     .flow-stage-shell {{
       display: grid;
       grid-template-rows: auto 1fr;
-      min-height: calc(100vh - 24px);
+      min-height: 0;
       background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
       border: 1px solid var(--border);
       border-radius: 18px;
@@ -338,7 +399,7 @@ def render_html(report: dict[str, Any]) -> str:
     .flow-stage-body {{
       position: relative;
       padding: 12px;
-      overflow: auto;
+      overflow: visible;
     }}
     .flow-view {{
       display: grid;
@@ -846,12 +907,15 @@ def render_html(report: dict[str, Any]) -> str:
         max-height: none;
         overflow-y: visible;
       }}
-      .flow-stage {{
+      .workspace {{
         position: static;
         max-height: none;
       }}
-      .detail-column {{
-        order: 2;
+      .workspace-shell {{
+        min-height: auto;
+      }}
+      .content-panel-body {{
+        max-height: none;
       }}
       .settings-fab {{
         right: 10px;
@@ -883,8 +947,25 @@ def render_html(report: dict[str, Any]) -> str:
         <strong>问题导航</strong>
         <ul>{nav_html}</ul>
       </aside>
-      {flow_stage_html}
-      <main class="detail-column">{details_html}</main>
+      <section class="workspace">
+        <section class="workspace-shell">
+          <div class="content-tabs">
+            <div class="content-tabs-title">流程 / 详情</div>
+            <button type="button" id="content-tab-flow" class="content-tab content-tab-active" data-tab-key="flow">流程</button>
+            <button type="button" id="content-tab-details" class="content-tab" data-tab-key="details">详情</button>
+          </div>
+          <div class="content-panels">
+            <section id="content-panel-flow" class="content-panel" data-tab-panel="flow">
+              <div class="content-panel-body">{flow_stage_html}</div>
+            </section>
+            <section id="content-panel-details" class="content-panel" data-tab-panel="details" hidden>
+              <div id="details-panel-body" class="content-panel-body">
+                <main class="detail-column">{details_html}</main>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
     </div>
   </div>
   <button type="button" id="settings-toggle" class="settings-fab" aria-controls="settings-panel" aria-expanded="false">设置</button>
@@ -1071,6 +1152,7 @@ def render_html(report: dict[str, Any]) -> str:
     const DETAIL_FIELD_STORAGE_KEY = 'chatbi_report_detail_fields_v1';
     let detailFieldVisibility = {{}};
     let navSyncTicking = false;
+    let activeContentTab = 'flow';
 
     function getDefaultDetailVisibility() {{
       const defaults = {{}};
@@ -1119,6 +1201,8 @@ def render_html(report: dict[str, Any]) -> str:
       }});
       const layout = document.querySelector('.layout');
       const flowStage = document.getElementById('flow-stage');
+      const flowTab = document.getElementById('content-tab-flow');
+      const flowPanel = document.getElementById('content-panel-flow');
       const flowVisible = detailFieldVisibility.flow_diagram !== false;
       if (layout) {{
         layout.classList.toggle('layout-flow-hidden', !flowVisible);
@@ -1129,6 +1213,15 @@ def render_html(report: dict[str, Any]) -> str:
         }} else {{
           flowStage.setAttribute('hidden', '');
         }}
+      }}
+      if (flowTab) {{
+        flowTab.hidden = !flowVisible;
+      }}
+      if (flowPanel) {{
+        flowPanel.hidden = !flowVisible || activeContentTab !== 'flow';
+      }}
+      if (!flowVisible && activeContentTab === 'flow') {{
+        setActiveContentTab('details');
       }}
     }}
 
@@ -1260,6 +1353,73 @@ def render_html(report: dict[str, Any]) -> str:
       }});
     }}
 
+    function setActiveContentTab(tabKey = 'flow') {{
+      const flowVisible = detailFieldVisibility.flow_diagram !== false;
+      const normalized = tabKey === 'details' ? 'details' : 'flow';
+      activeContentTab = !flowVisible && normalized === 'flow' ? 'details' : normalized;
+      document.querySelectorAll('.content-tab[data-tab-key]').forEach((button) => {{
+        const key = button.getAttribute('data-tab-key');
+        const selected = key === activeContentTab;
+        button.classList.toggle('content-tab-active', selected);
+        button.setAttribute('aria-selected', selected ? 'true' : 'false');
+      }});
+      document.querySelectorAll('.content-panel[data-tab-panel]').forEach((panel) => {{
+        const key = panel.getAttribute('data-tab-panel');
+        panel.hidden = key !== activeContentTab || (key === 'flow' && !flowVisible);
+      }});
+      if (activeContentTab === 'details') {{
+        syncActivePanels();
+      }}
+    }}
+
+    function bindContentTabs() {{
+      document.querySelectorAll('.content-tab[data-tab-key]').forEach((button) => {{
+        button.addEventListener('click', () => {{
+          const key = button.getAttribute('data-tab-key') || 'flow';
+          setActiveContentTab(key);
+        }});
+      }});
+    }}
+
+    function scrollDetailsToAnchor(anchorId = '') {{
+      if (!anchorId) {{
+        return;
+      }}
+      const target = document.getElementById(anchorId);
+      if (!target) {{
+        return;
+      }}
+      target.scrollIntoView({{ block: 'start', behavior: 'auto' }});
+    }}
+
+    function bindNavLinkBehavior() {{
+      document.querySelectorAll('.nav a[href^="#"]').forEach((link) => {{
+        link.addEventListener('click', (event) => {{
+          const href = link.getAttribute('href') || '';
+          const targetId = href.startsWith('#') ? href.slice(1) : '';
+          if (!targetId) {{
+            return;
+          }}
+          event.preventDefault();
+          if (window.location.hash !== `#${{targetId}}`) {{
+            window.history.replaceState(null, '', `#${{targetId}}`);
+          }}
+          const resolvedMatchAnchor = resolveMatchAnchor(targetId);
+          if (resolvedMatchAnchor) {{
+            updateActiveNavLinks(resolvedMatchAnchor);
+            setActiveFlowView(resolvedMatchAnchor);
+          }} else {{
+            updateActiveNavLinks(targetId);
+          }}
+          setActiveContentTab('details');
+          window.requestAnimationFrame(() => {{
+            scrollDetailsToAnchor(targetId);
+            syncActivePanels();
+          }});
+        }});
+      }});
+    }}
+
     function scrollNavIntoView(link) {{
       const nav = document.querySelector('.nav');
       if (!nav || !link) {{
@@ -1314,14 +1474,20 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     function getActiveMatchAnchorFromViewport() {{
-      const sections = Array.from(document.querySelectorAll('.match[id]'));
+      const detailPanelBody = document.getElementById('details-panel-body');
+      if (!detailPanelBody || detailPanelBody.closest('[hidden]')) {{
+        const flowStage = document.getElementById('flow-stage');
+        return flowStage ? flowStage.getAttribute('data-active-match-anchor') || '' : '';
+      }}
+      const sections = Array.from(detailPanelBody.querySelectorAll('.match[id]'));
       if (!sections.length) {{
         return '';
       }}
-      const threshold = 160;
+      const threshold = 96;
+      const panelTop = detailPanelBody.getBoundingClientRect().top;
       let active = sections[0].id;
       for (const section of sections) {{
-        if (section.getBoundingClientRect().top - threshold <= 0) {{
+        if (section.getBoundingClientRect().top - panelTop - threshold <= 0) {{
           active = section.id;
         }} else {{
           break;
@@ -1380,10 +1546,17 @@ def render_html(report: dict[str, Any]) -> str:
     function initializePage() {{
       initSettingsPanel();
       bindFlowNodeEvents();
+      bindContentTabs();
+      bindNavLinkBehavior();
       const initialAnchor = resolveMatchAnchor(window.location.hash ? window.location.hash.slice(1) : '') || getActiveMatchAnchorFromViewport();
+      setActiveContentTab(detailFieldVisibility.flow_diagram !== false ? 'flow' : 'details');
       updateActiveNavLinks(initialAnchor);
       setActiveFlowView(initialAnchor);
       syncActivePanels();
+      const detailPanelBody = document.getElementById('details-panel-body');
+      if (detailPanelBody) {{
+        detailPanelBody.addEventListener('scroll', syncActivePanels, {{ passive: true }});
+      }}
       document.addEventListener('click', (event) => {{
         const target = event.target;
         if (!(target instanceof Node)) {{
@@ -1397,7 +1570,6 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     window.addEventListener('hashchange', syncActivePanels);
-    window.addEventListener('scroll', syncActivePanels, {{ passive: true }});
     window.addEventListener('resize', syncActivePanels);
     window.addEventListener('DOMContentLoaded', initializePage);
   </script>
