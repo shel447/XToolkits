@@ -608,6 +608,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("classList.add('nav-parent-active')", html)
         self.assertIn("flowPanelBody.addEventListener('wheel', (event) => {", html)
         self.assertIn("if (activeContentTab !== 'flow') {", html)
+        self.assertIn("flowPanelBody.scrollTop + flowPanelBody.clientHeight + Math.max(event.deltaY, 0) >= flowPanelBody.scrollHeight - 2", html)
+        self.assertIn("flowPanelBody.scrollTop + Math.min(event.deltaY, 0) <= 0", html)
         self.assertIn("window.addEventListener('hashchange', () => {", html)
         self.assertIn("detailPanelBody.addEventListener('scroll', syncActivePanels, { passive: true });", html)
         self.assertIn("overflow-y: auto;", html)

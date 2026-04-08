@@ -1428,12 +1428,13 @@ def render_html(report: dict[str, Any]) -> str:
         if (activeContentTab !== 'flow') {{
           return;
         }}
-        const atBottom = flowPanelBody.scrollTop + flowPanelBody.clientHeight >= flowPanelBody.scrollHeight - 2;
-        const atTop = flowPanelBody.scrollTop <= 2;
+        const willReachBottom =
+          flowPanelBody.scrollTop + flowPanelBody.clientHeight + Math.max(event.deltaY, 0) >= flowPanelBody.scrollHeight - 2;
+        const willReachTop = flowPanelBody.scrollTop + Math.min(event.deltaY, 0) <= 0;
         let nextAnchor = '';
-        if (event.deltaY > 0 && atBottom) {{
+        if (event.deltaY > 0 && willReachBottom) {{
           nextAnchor = getAdjacentMatchAnchor(getActiveMatchAnchorFromViewport(), 1);
-        }} else if (event.deltaY < 0 && atTop) {{
+        }} else if (event.deltaY < 0 && willReachTop) {{
           nextAnchor = getAdjacentMatchAnchor(getActiveMatchAnchorFromViewport(), -1);
         }}
         if (!nextAnchor) {{
@@ -1588,6 +1589,7 @@ def render_html(report: dict[str, Any]) -> str:
       const resolvedAnchorId = resolveMatchAnchor(anchorId) || getActiveMatchAnchorFromViewport();
       const flowStage = document.getElementById('flow-stage');
       const flowStageBody = document.getElementById('flow-stage-body');
+      const flowPanelBody = document.getElementById('flow-panel-body');
       if (!flowStage || !resolvedAnchorId) {{
         return;
       }}
@@ -1600,8 +1602,13 @@ def render_html(report: dict[str, Any]) -> str:
           view.setAttribute('hidden', '');
         }}
       }});
-      if (flowStageBody && resetScroll) {{
-        flowStageBody.scrollTop = 0;
+      if (resetScroll) {{
+        if (flowStageBody) {{
+          flowStageBody.scrollTop = 0;
+        }}
+        if (flowPanelBody) {{
+          flowPanelBody.scrollTop = 0;
+        }}
       }}
       closeOpenFlowTooltips();
     }}
