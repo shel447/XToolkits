@@ -8,16 +8,14 @@ from typing import Any
 
 FLOW_NODE_SPECS = [
     {"key": "start", "label": "开始", "meta": "起始", "type": "start"},
-    {"key": "extract_question", "label": "1 提取用户问题", "meta": "锚点", "type": "process"},
-    {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "拒答/追问", "type": "process"},
-    {"key": "preprocess_knowledge", "label": "2.2 拒答/追问知识", "meta": "拒答/追问", "type": "process"},
+    {"key": "ac_enriched_question", "label": "2.1 实体检索", "meta": "", "type": "process"},
+    {"key": "preprocess_knowledge", "label": "2.2 拒答/追问知识", "meta": "", "type": "process"},
     {"key": "preprocess_decision", "label": "2.3 拒答/追问判定", "meta": "判断", "type": "decision"},
     {"key": "mask_question", "label": "3.1 标准化问题", "meta": "", "type": "process"},
     {"key": "sql_knowledge", "label": "3.2 检索SQL生成知识", "meta": "", "type": "process"},
     {"key": "sql_rewrite", "label": "3.3 问题改写", "meta": "", "type": "process"},
     {"key": "recalled_tables", "label": "3.4 表检索", "meta": "", "type": "process"},
-    {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "", "type": "process"},
-    {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "", "type": "process"},
+    {"key": "final_prompt", "label": "3.6 拼装Prompt", "meta": "", "type": "process"},
     {"key": "generated_ir", "label": "3.7 生成 IR", "meta": "", "type": "process"},
     {"key": "verifier", "label": "3.8 校验", "meta": "判断", "type": "decision"},
     {"key": "end", "label": "结束", "meta": "结果", "type": "end"},
@@ -377,30 +375,9 @@ def render_html(report: dict[str, Any]) -> str:
     .flow-stage[hidden] {{
       display: none;
     }}
-    .flow-stage-shell {{
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-height: 0;
-      background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-      overflow: hidden;
-    }}
-    .flow-stage-header {{
-      padding: 14px 16px 12px;
-      border-bottom: 1px solid #e3eaf4;
-      background: linear-gradient(180deg, #fdfefe 0%, #f3f8ff 100%);
-    }}
-    .flow-stage-subtitle {{
-      margin-top: 0;
-      color: #607086;
-      font-size: 12px;
-      line-height: 1.45;
-    }}
     .flow-stage-body {{
       position: relative;
-      padding: 12px;
+      padding: 0;
       overflow: visible;
     }}
     .flow-view {{
@@ -1149,15 +1126,15 @@ def render_html(report: dict[str, Any]) -> str:
       {{ key: 'flow_diagram', label: '流程图' }},
       {{ key: 'status_summary', label: '流程状态' }},
       {{ key: 'anchor_line', label: '命中锚点日志' }},
-      {{ key: 'ac_enriched_question', label: 'AC 补充问题' }},
+      {{ key: 'ac_enriched_question', label: '实体检索' }},
       {{ key: 'preprocess_rewritten_question', label: '拒答/追问改写' }},
       {{ key: 'preprocess_knowledge', label: '拒答/追问知识' }},
       {{ key: 'mask_question', label: '标准化问题' }},
-      {{ key: 'sql_knowledge', label: 'SQL生成知识' }},
+      {{ key: 'sql_knowledge', label: '检索SQL生成知识' }},
       {{ key: 'sql_rewrite', label: '问题改写' }},
       {{ key: 'recalled_tables', label: '表检索结果' }},
       {{ key: 'ir_table_definition', label: 'IR 表定义' }},
-      {{ key: 'final_prompt', label: '最终 Prompt' }},
+      {{ key: 'final_prompt', label: '拼装Prompt' }},
       {{ key: 'verifier_records', label: '校验记录' }},
       {{ key: 'generated_ir', label: '生成 IR 结果' }},
       {{ key: 'complete_ir', label: '完整 IR' }},
@@ -1795,18 +1772,13 @@ def _render_flow_stage(flow_views_html: str, active_flow_anchor: str) -> str:
         """
     return f"""
     <section id="flow-stage" class="flow-stage" data-active-match-anchor="{escape(active_flow_anchor)}">
-      <section class="flow-stage-shell">
-        <div class="flow-stage-header">
-          <div class="flow-stage-subtitle">滚动查看完整流程图，随当前进入视口的调用自动切换。</div>
+      <div id="flow-stage-body" class="flow-stage-body">
+        {flow_views_html}
+        <div id="flow-tooltip-popup" class="flow-tooltip-popup" hidden>
+          <div id="flow-tooltip-title" class="flow-tooltip-title"></div>
+          <pre id="flow-tooltip-content"></pre>
         </div>
-        <div id="flow-stage-body" class="flow-stage-body">
-          {flow_views_html}
-          <div id="flow-tooltip-popup" class="flow-tooltip-popup" hidden>
-            <div id="flow-tooltip-title" class="flow-tooltip-title"></div>
-            <pre id="flow-tooltip-content"></pre>
-          </div>
-        </div>
-      </section>
+      </div>
     </section>
     """
 
@@ -1926,19 +1898,13 @@ def _render_flow_connectors(
 ) -> list[str]:
     connectors: list[str] = []
     main_pairs = [
-        ("start", "extract_question", ""),
-        ("extract_question", "ac_enriched_question", _short_edge_text(str(match.get("question", "")).strip(), 18)),
+        ("start", "ac_enriched_question", ""),
         ("ac_enriched_question", "preprocess_knowledge", _short_edge_text(str(match.get("ac_enriched_question", "")).strip(), 18)),
         ("preprocess_knowledge", "preprocess_decision", ""),
         ("mask_question", "sql_knowledge", _short_edge_text(str(match.get("mask_question", "")).strip(), 18)),
-        (
-            "sql_knowledge",
-            "sql_rewrite",
-            _short_edge_text(str(match.get("sql_rewritten_question", "") or match.get("rewritten_question", "")).strip(), 18),
-        ),
-        ("sql_rewrite", "recalled_tables", _summarize_tables_for_edge(match.get("recalled_tables", []))),
-        ("recalled_tables", "ir_table_definition", ""),
-        ("ir_table_definition", "final_prompt", ""),
+        ("sql_knowledge", "sql_rewrite", _compose_sql_knowledge_edge_label(match)),
+        ("sql_rewrite", "recalled_tables", _compose_sql_rewrite_edge_label(match)),
+        ("recalled_tables", "final_prompt", _summarize_tables_for_edge(match.get("recalled_tables", []))),
         ("final_prompt", "generated_ir", ""),
         ("generated_ir", "verifier", ""),
     ]
@@ -1964,7 +1930,7 @@ def _render_flow_connectors(
             positions["preprocess_decision"]["cx"],
             _flow_node_bottom(positions["preprocess_decision"]["cy"], node_lookup["preprocess_decision"]["type"]),
             _flow_node_top(positions["mask_question"]["cy"], node_lookup["mask_question"]["type"]),
-            _resolve_linear_connector_status(node_lookup, "preprocess_decision", "mask_question") if data_query_active else "unknown",
+            "active" if data_query_active else "unknown",
             _compose_data_query_edge_label(match) if data_query_active else "问数",
         )
     )
@@ -1980,7 +1946,7 @@ def _render_flow_connectors(
                 (positions["end"]["cx"] + 94, positions["end"]["cy"] - 40),
                 (positions["end"]["cx"] + 94, positions["end"]["cy"] - 10),
             ],
-            "reject" if reject_active else "unknown",
+            "active" if reject_active else "unknown",
             "拒答",
             label_x=654,
             label_y=positions["preprocess_decision"]["cy"] - 8,
@@ -1998,7 +1964,7 @@ def _render_flow_connectors(
                 (positions["end"]["cx"] + 98, positions["end"]["cy"] + 8),
                 (positions["end"]["cx"] + 98, positions["end"]["cy"]),
             ],
-            "follow-up" if follow_up_active else "unknown",
+            "active" if follow_up_active else "unknown",
             "追问",
             label_x=672,
             label_y=positions["preprocess_decision"]["cy"] + 34,
@@ -2021,7 +1987,7 @@ def _render_flow_connectors(
                         positions["generated_ir"]["cy"],
                     ),
                 ],
-                "failed" if retry_count > 0 else "unknown",
+                "active" if retry_count > 0 else "unknown",
                 f"重试 {retry_count} 次" if retry_count > 0 else "",
                 label_x=142,
                 label_y=(positions["verifier"]["cy"] + positions["generated_ir"]["cy"]) / 2,
@@ -2050,7 +2016,7 @@ def _render_flow_connectors(
                 (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
                 (positions["end"]["cx"] + 94, positions["end"]["cy"]),
             ],
-            "failed" if flow_status == "failed" else "unknown",
+            "active" if flow_status == "failed" else "unknown",
             "最终失败",
             label_x=658,
             label_y=positions["verifier"]["cy"] + 26,
@@ -2101,7 +2067,7 @@ def _render_connector_path(path: str, status_class: str, label: str, label_x: fl
 
 def _render_edge_label(label: str, x: float, y: float) -> str:
     label_text = escape(label)
-    width = max(44, min(160, 14 + len(label) * 11))
+    width = max(44, min(340, 14 + len(label) * 8))
     return (
         f'<g class="flow-edge-label" transform="translate({x:.0f},{y:.0f})">'
         f'<rect class="flow-edge-label-bg" x="{-width / 2:.0f}" y="-12" width="{width:.0f}" height="24" rx="7" ry="7"></rect>'
@@ -2166,6 +2132,24 @@ def _compose_data_query_edge_label(match: dict[str, Any]) -> str:
     return base
 
 
+def _compose_sql_knowledge_edge_label(match: dict[str, Any]) -> str:
+    counts = match.get("sql_knowledge_counts", {})
+    if not isinstance(counts, dict):
+        return ""
+    global_count = int(counts.get("global", 0) or 0)
+    sql_generation_count = int(counts.get("sql_generation", 0) or 0)
+    sql_gen_few_shot_count = int(counts.get("sql_gen_few_shot", 0) or 0)
+    return f"Global {global_count} / SQLGeneration {sql_generation_count} / SQLGenFewShot {sql_gen_few_shot_count}"
+
+
+def _compose_sql_rewrite_edge_label(match: dict[str, Any]) -> str:
+    rewritten = _short_edge_text(
+        str(match.get("sql_rewritten_question", "") or match.get("rewritten_question", "")).strip(),
+        24,
+    )
+    return rewritten
+
+
 def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     title = f"{match['anchor_timestamp']} | 线程 {match['thread_id']} | 第 {match['index']} 次调用"
     associated_threads = match.get("associated_thread_ids", [])
@@ -2199,7 +2183,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     ]
     sections.extend([
         _wrap_config_item("anchor_line", _render_text_section("命中锚点日志", match["anchor_line"])),
-        _wrap_config_item("ac_enriched_question", _render_text_section("AC 补充问题", match.get("ac_enriched_question", ""))),
+        _wrap_config_item("ac_enriched_question", _render_text_section("实体检索", match.get("ac_enriched_question", ""))),
         _wrap_config_item("preprocess_rewritten_question", _render_text_section("拒答/追问改写", match.get("preprocess_rewritten_question", ""))),
         _wrap_config_item("preprocess_knowledge", _render_grouped_knowledge_section("拒答/追问知识", preprocess_group)),
         _wrap_config_item(
@@ -2210,7 +2194,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
                 skipped="mask_question" in skipped_sections,
             ),
         ),
-        _wrap_config_item("sql_knowledge", _render_grouped_knowledge_section("SQL生成知识", sql_group, skipped=sql_knowledge_skipped)),
+        _wrap_config_item("sql_knowledge", _render_grouped_knowledge_section("检索SQL生成知识", sql_group, skipped=sql_knowledge_skipped)),
         _wrap_config_item(
             "sql_rewrite",
             _render_sql_rewrite_section(
@@ -2241,7 +2225,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         _wrap_config_item(
             "final_prompt",
             _render_collapsible_prompt_execution_section(
-                "最终 Prompt",
+                "拼装Prompt",
                 match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
                 f"final-prompt-{anchor_id}",
                 match_id=match["match_id"],
@@ -2294,7 +2278,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
 
     direct = {
         "start": True,
-        "extract_question": bool(str(match.get("question", "")).strip() or str(match.get("anchor_line", "")).strip()),
         "ac_enriched_question": bool(str(match.get("ac_enriched_question", "")).strip()),
         "preprocess_knowledge": bool(preprocess_knowledge_text),
         "preprocess_decision": bool(str(match.get("preprocess_decision", "")).strip()),
@@ -2302,7 +2285,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
         "sql_knowledge": bool(sql_knowledge_text),
         "sql_rewrite": bool(sql_rewrite_text),
         "recalled_tables": bool(match.get("recalled_tables")),
-        "ir_table_definition": bool(str(match.get("ir_table_definition", "")).strip()),
         "final_prompt": bool(
             str(match.get("final_prompt", {}).get("combined", "")).strip()
             or str(match.get("final_prompt", {}).get("raw", "")).strip()
@@ -2314,7 +2296,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
 
     reached = {
         "start": True,
-        "extract_question": direct["extract_question"],
         "ac_enriched_question": direct["ac_enriched_question"] or any(
             direct[key]
             for key in [
@@ -2324,7 +2305,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "sql_knowledge",
                 "sql_rewrite",
                 "recalled_tables",
-                "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
                 "verifier",
@@ -2338,7 +2318,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "sql_knowledge",
                 "sql_rewrite",
                 "recalled_tables",
-                "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
                 "verifier",
@@ -2351,7 +2330,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "sql_knowledge",
                 "sql_rewrite",
                 "recalled_tables",
-                "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
                 "verifier",
@@ -2363,7 +2341,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "sql_knowledge",
                 "sql_rewrite",
                 "recalled_tables",
-                "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
                 "verifier",
@@ -2374,7 +2351,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
             for key in [
                 "sql_rewrite",
                 "recalled_tables",
-                "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
                 "verifier",
@@ -2384,22 +2360,12 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
             direct[key]
             for key in [
                 "recalled_tables",
-                "ir_table_definition",
                 "final_prompt",
                 "generated_ir",
                 "verifier",
             ]
         ),
         "recalled_tables": direct["recalled_tables"] or any(
-            direct[key]
-            for key in [
-                "ir_table_definition",
-                "final_prompt",
-                "generated_ir",
-                "verifier",
-            ]
-        ),
-        "ir_table_definition": direct["ir_table_definition"] or any(
             direct[key]
             for key in [
                 "final_prompt",
@@ -2414,8 +2380,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
     }
 
     details = {
-        "start": "流程开始，已定位到当前调用实例。",
-        "extract_question": _format_extract_question_tooltip(match),
+        "start": _format_extract_question_tooltip(match),
         "ac_enriched_question": str(match.get("ac_enriched_question", "")).strip(),
         "preprocess_knowledge": preprocess_knowledge_text,
         "preprocess_decision": _format_preprocess_decision_tooltip(match),
@@ -2423,7 +2388,6 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
         "sql_knowledge": sql_knowledge_text,
         "sql_rewrite": sql_rewrite_text,
         "recalled_tables": _format_list_tooltip(match.get("recalled_tables", [])),
-        "ir_table_definition": str(match.get("ir_table_definition", "")).strip(),
         "final_prompt": str(match.get("final_prompt", {}).get("combined", "")).strip() or str(match.get("final_prompt", {}).get("raw", "")).strip(),
         "generated_ir": str(match.get("generated_ir", "")).strip(),
         "verifier": verifier_text,

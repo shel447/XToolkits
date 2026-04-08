@@ -712,6 +712,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "generation": sql_generation_knowledge,
         "few_shot": few_shot_knowledge,
     }
+    sql_knowledge_counts = _build_sql_knowledge_counts(sql_generation_knowledge, few_shot_knowledge)
     sql_rewrite_prompt_raw, sql_rewrite_prompt_json, sql_rewritten_question, sql_rewrite_errors = (
         ("", "", "", [])
         if terminated_at_preprocess
@@ -759,6 +760,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
         "sql_knowledge": sql_knowledge,
+        "sql_knowledge_counts": sql_knowledge_counts,
         "sql_rewrite_prompt_raw": sql_rewrite_prompt_raw,
         "sql_rewrite_prompt_json": sql_rewrite_prompt_json,
         "rag_results": rag_results,
@@ -851,6 +853,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "generation": sql_generation_knowledge,
         "few_shot": few_shot_knowledge,
     }
+    sql_knowledge_counts = _build_sql_knowledge_counts(sql_generation_knowledge, few_shot_knowledge)
     sql_rewrite_prompt_raw, sql_rewrite_prompt_json, sql_rewritten_question, sql_rewrite_errors = (
         ("", "", "", [])
         if terminated_at_preprocess
@@ -900,6 +903,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
         "sql_knowledge": sql_knowledge,
+        "sql_knowledge_counts": sql_knowledge_counts,
         "sql_rewrite_prompt_raw": sql_rewrite_prompt_raw,
         "sql_rewrite_prompt_json": sql_rewrite_prompt_json,
         "rag_results": rag_results,
@@ -1187,6 +1191,37 @@ def _extract_after_keyword(line: str, keyword: str) -> str:
         return ""
     remainder = line.split(keyword, 1)[1]
     return remainder.lstrip(" ：:").strip()
+
+
+def _count_recommends_in_result_text(result_text: str) -> int:
+    text = str(result_text).strip()
+    if not text:
+        return 0
+    try:
+        payload = _load_prompt_payload(text)
+    except (ValueError, TypeError, json.JSONDecodeError, SyntaxError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    recommends = payload.get("recommends")
+    if isinstance(recommends, list):
+        return len(recommends)
+    return 0
+
+
+def _build_sql_knowledge_counts(
+    sql_generation_knowledge: dict[str, Any],
+    few_shot_knowledge: dict[str, Any],
+) -> dict[str, int]:
+    generation_global = _count_recommends_in_result_text(str(sql_generation_knowledge.get("global_result", "")))
+    generation_scope = _count_recommends_in_result_text(str(sql_generation_knowledge.get("scope_result", "")))
+    few_shot_global = _count_recommends_in_result_text(str(few_shot_knowledge.get("global_result", "")))
+    few_shot_scope = _count_recommends_in_result_text(str(few_shot_knowledge.get("scope_result", "")))
+    return {
+        "global": generation_global + few_shot_global,
+        "sql_generation": generation_scope,
+        "sql_gen_few_shot": few_shot_scope,
+    }
 
 
 def _build_complete_ir(

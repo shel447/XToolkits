@@ -113,24 +113,24 @@ tables = get_tables_columns(table_exprs)
 PREPROCESS_SQL_FLOW_LOG = """2026-04-08 10:00:00.001 [INFO] [611111111111111] sql_template_match hit query: 原始问题
 2026-04-08 10:00:00.002 [INFO] [611111111111111] question after ac: AC补充后的问题
 2026-04-08 10:00:00.003 [INFO] [611111111111111] knowledge retriever: Global: preprocess global req
-2026-04-08 10:00:00.004 [INFO] [611111111111111] knowledge retriever success: preprocess global result
+2026-04-08 10:00:00.004 [INFO] [611111111111111] knowledge retriever success: {'recommends': [{'id': 'pg1'}]}
 2026-04-08 10:00:00.005 [INFO] [999999999999999] unrelated line
 2026-04-08 10:00:00.006 [INFO] [611111111111111] knowledge retriever: IntentionRewrite: preprocess rewrite req
-2026-04-08 10:00:00.007 [INFO] [611111111111111] knowledge retriever success: preprocess rewrite result
+2026-04-08 10:00:00.007 [INFO] [611111111111111] knowledge retriever success: {'recommends': [{'id': 'pr1'}, {'id': 'pr2'}]}
 2026-04-08 10:00:00.008 [INFO] [611111111111111] react chat llm chient res {"type":"DataQuery","query_intent": "预处理改写问题"}
 2026-04-08 10:00:00.009 [INFO] [611111111111111] call sqlflow input: 标准化问题
 2026-04-08 10:00:00.010 [INFO] [711111111111111] MASK QUESTION: 标准化问题
 2026-04-08 10:00:00.011 [INFO] [711111111111111] knowledge retriever: Global: sql global req
 2026-04-08 10:00:00.012 [INFO] [888888888888888] interleaved line
-2026-04-08 10:00:00.013 [INFO] [711111111111111] knowledge retriever success: sql global result
+2026-04-08 10:00:00.013 [INFO] [711111111111111] knowledge retriever success: {'recommends': [{'id': 'sg1'}, {'id': 'sg2'}]}
 2026-04-08 10:00:00.014 [INFO] [711111111111111] knowledge retriever: SQLGeneration: sql scoped req
 2026-04-08 10:00:00.015 [INFO] [877777777777777] interleaved line
-2026-04-08 10:00:00.016 [INFO] [711111111111111] knowledge retriever success: sql scoped result
+2026-04-08 10:00:00.016 [INFO] [711111111111111] knowledge retriever success: {'recommends': [{'id': 'sql1'}]}
 2026-04-08 10:00:00.017 [INFO] [711111111111111] knowledge retriever: Global: few global req
 2026-04-08 10:00:00.018 [INFO] [866666666666666] interleaved line
-2026-04-08 10:00:00.019 [INFO] [711111111111111] knowledge retriever success: few global result
+2026-04-08 10:00:00.019 [INFO] [711111111111111] knowledge retriever success: {'recommends': [{'id': 'fg1'}, {'id': 'fg2'}, {'id': 'fg3'}]}
 2026-04-08 10:00:00.020 [INFO] [711111111111111] knowledge retriever: SQLGenFewShot: few scoped req
-2026-04-08 10:00:00.021 [INFO] [711111111111111] knowledge retriever success: few scoped result
+2026-04-08 10:00:00.021 [INFO] [711111111111111] knowledge retriever success: {'recommends': [{'id': 'fs1'}, {'id': 'fs2'}]}
 2026-04-08 10:00:00.022 [INFO] [711111111111111] 问题改写任务：[{'role': 'system', 'content': 'rewrite prompt'}]
 2026-04-08 10:00:00.023 [INFO] [711111111111111] rewrite question from before to SQL改写后的问题
 2026-04-08 10:00:00.024 [INFO] [711111111111111] 召回表: sales_order
@@ -488,20 +488,28 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(match["preprocess_rewritten_question"], "预处理改写问题")
         self.assertEqual(
             match["preprocess_knowledge"]["rewrite"]["global_result"],
-            "preprocess global result",
+            "{'recommends': [{'id': 'pg1'}]}",
         )
         self.assertEqual(
             match["preprocess_knowledge"]["rewrite"]["scope_result"],
-            "preprocess rewrite result",
+            "{'recommends': [{'id': 'pr1'}, {'id': 'pr2'}]}",
         )
         self.assertEqual(match["mask_question"], "标准化问题")
         self.assertEqual(
             match["sql_generation_knowledge"]["scope_result"],
-            "sql scoped result",
+            "{'recommends': [{'id': 'sql1'}]}",
         )
         self.assertEqual(
             match["few_shot_knowledge"]["scope_result"],
-            "few scoped result",
+            "{'recommends': [{'id': 'fs1'}, {'id': 'fs2'}]}",
+        )
+        self.assertEqual(
+            match["sql_knowledge_counts"],
+            {
+                "global": 5,
+                "sql_generation": 1,
+                "sql_gen_few_shot": 2,
+            },
         )
         self.assertEqual(match["sql_rewritten_question"], "SQL改写后的问题")
         self.assertEqual(match["rewritten_question"], "SQL改写后的问题")
@@ -548,6 +556,9 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('id="flow-stage"', html)
         self.assertIn(">拒答<", html)
         self.assertIn(">追问<", html)
+        self.assertIn(">问数 预处理改写问题<", html)
+        self.assertIn(">SQL改写后的问题<", html)
+        self.assertIn(">Global 5 / SQLGeneration 1 / SQLGenFewShot 2<", html)
         self.assertIn('title="复制提示词 JSON"', html)
         self.assertIn('title="复制改写问题"', html)
         self.assertRegex(html, r'data-copy-target="sql-rewrite-question-\d+-match-\d+-prompt-json"')
@@ -586,8 +597,10 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('id="flow-panel-body"', html)
         self.assertIn('id="flow-stage"', html)
         self.assertIn('class="flow-stage"', html)
-        self.assertIn('class="flow-stage-shell"', html)
         self.assertIn('class="flow-stage-body"', html)
+        self.assertNotIn('class="flow-stage-shell"', html)
+        self.assertNotIn('class="flow-stage-header"', html)
+        self.assertNotIn('class="flow-stage-subtitle"', html)
         self.assertIn('class="flow-view"', html)
         self.assertIn('class="flow-svg"', html)
         self.assertIn('class="flow-group"', html)
@@ -600,7 +613,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('flow-connector-active', html)
         self.assertIn('class="flow-edge-label"', html)
         self.assertIn('marker-end="url(#flow-arrow-head)"', html)
-        self.assertIn(">拒答/追问<", html)
+        self.assertNotIn(">拒答/追问<", html)
         self.assertIn(".nav a.nav-active {", html)
         self.assertIn(".nav a.nav-question-active {", html)
         self.assertIn(".nav a.nav-parent-active {", html)
@@ -632,11 +645,12 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn("{ key: 'flow_diagram', label: '流程图' }", html)
         self.assertIn("applyDetailVisibility()", html)
         self.assertIn(">开始<", html)
-        self.assertIn(">1 提取用户问题<", html)
+        self.assertNotIn(">1 提取用户问题<", html)
+        self.assertIn(">2.1 实体检索<", html)
         self.assertIn(">2.3 拒答/追问判定<", html)
         self.assertIn(">3.2 检索SQL生成知识<", html)
         self.assertIn(">3.3 问题改写<", html)
-        self.assertIn(">3.6 最终 Prompt<", html)
+        self.assertIn(">3.6 拼装Prompt<", html)
         self.assertIn(">3.7 生成 IR<", html)
         self.assertIn(">3.8 校验<", html)
         self.assertIn(">结束<", html)
@@ -648,8 +662,9 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn("当前调用流程", html)
         self.assertNotIn(">预处理<", html)
         self.assertNotIn("<summary>RAG 检索结果</summary>", html)
+        self.assertNotIn(">3.5 IR 表定义<", html)
         self.assertIn("<summary>IR 表定义</summary>", html)
-        self.assertIn("<summary>最终 Prompt</summary>", html)
+        self.assertIn("<summary>拼装Prompt</summary>", html)
         self.assertIn("<summary>生成 IR 结果</summary>", html)
         self.assertIn("拒答/追问改写", html)
         self.assertIn("拒答/追问知识", html)
@@ -691,7 +706,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertNotIn("调用 ID：", html)
         self.assertIn("未命中该字段", html)
         self.assertIn("流程 / 详情", html)
-        self.assertIn("滚动查看完整流程图", html)
+        self.assertNotIn("滚动查看完整流程图", html)
 
     def test_render_html_shows_retry_badges_and_failure_blocks(self) -> None:
         report = extract_report((FIXTURES_ROOT / "thread_reuse_chatbi.log").read_text(encoding="utf-8"), "thread_reuse_chatbi.log")
