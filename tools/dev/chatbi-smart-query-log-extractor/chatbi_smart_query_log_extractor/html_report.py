@@ -12,13 +12,13 @@ FLOW_NODE_SPECS = [
     {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "拒答/追问", "type": "process"},
     {"key": "preprocess_knowledge", "label": "2.2 拒答/追问知识", "meta": "拒答/追问", "type": "process"},
     {"key": "preprocess_decision", "label": "2.3 拒答/追问判定", "meta": "判断", "type": "decision"},
-    {"key": "mask_question", "label": "3.1 标准化问题", "meta": "Text2Data", "type": "process"},
-    {"key": "sql_knowledge", "label": "3.2 SQL 生成知识", "meta": "Text2Data", "type": "process"},
-    {"key": "sql_rewrite", "label": "3.3 SQL 改写", "meta": "Text2Data", "type": "process"},
-    {"key": "recalled_tables", "label": "3.4 表检索", "meta": "Text2Data", "type": "process"},
-    {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "Text2Data", "type": "process"},
-    {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "Text2Data", "type": "process"},
-    {"key": "generated_ir", "label": "3.7 生成 IR", "meta": "Text2Data", "type": "process"},
+    {"key": "mask_question", "label": "3.1 标准化问题", "meta": "", "type": "process"},
+    {"key": "sql_knowledge", "label": "3.2 检索SQL生成知识", "meta": "", "type": "process"},
+    {"key": "sql_rewrite", "label": "3.3 问题改写", "meta": "", "type": "process"},
+    {"key": "recalled_tables", "label": "3.4 表检索", "meta": "", "type": "process"},
+    {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "", "type": "process"},
+    {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "", "type": "process"},
+    {"key": "generated_ir", "label": "3.7 生成 IR", "meta": "", "type": "process"},
     {"key": "verifier", "label": "3.8 校验", "meta": "判断", "type": "decision"},
     {"key": "end", "label": "结束", "meta": "结果", "type": "end"},
 ]
@@ -482,6 +482,10 @@ def render_html(report: dict[str, Any]) -> str:
       stroke: #99a8bb;
       stroke-width: 1.6;
       fill: none;
+    }}
+    .flow-svg .flow-connector-active {{
+      stroke: #111827;
+      stroke-width: 2.6;
     }}
     .flow-svg .flow-connector-unknown {{
       stroke: #c7d0dc;
@@ -1857,7 +1861,7 @@ def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str
 def _render_flow_groups(positions: dict[str, dict[str, int]]) -> list[str]:
     groups = [
         ("意图识别", "ac_enriched_question", "preprocess_decision"),
-        ("SQL生成", "mask_question", "verifier"),
+        ("Text2Data-SQL生成", "mask_question", "verifier"),
     ]
     rendered: list[str] = []
     for label, start_key, end_key in groups:
@@ -1907,7 +1911,7 @@ def _render_svg_flow_node(anchor_id: str, node: dict[str, str], center_x: int, c
        data-node-summary="{summary_attr}">
       {shape}
       <text class="flow-node-text" x="{center_x}" y="{center_y - 7}">{label}</text>
-      <text class="flow-node-subtext" x="{center_x}" y="{center_y + 14}">{meta}</text>
+      {"<text class=\"flow-node-subtext\" x=\"" + str(center_x) + "\" y=\"" + str(center_y + 14) + "\">" + meta + "</text>" if meta else ""}
       <rect class="flow-node-hitbox" x="{center_x - width / 2 - 12:.0f}" y="{center_y - height / 2 - 12:.0f}" width="{width + 24:.0f}" height="{height + 24:.0f}" rx="16" ry="16"></rect>
     </g>
     """
@@ -2030,7 +2034,7 @@ def _render_flow_connectors(
             positions["verifier"]["cx"],
             _flow_node_bottom(positions["verifier"]["cy"], node_lookup["verifier"]["type"]),
             _flow_node_top(positions["end"]["cy"], node_lookup["end"]["type"]),
-            "success" if flow_status == "success" else "unknown",
+            "active" if flow_status == "success" else "unknown",
             _short_edge_text(_extract_sql_summary(match), 24) if flow_status == "success" else "",
         )
     )
@@ -2117,7 +2121,7 @@ def _resolve_linear_connector_status(
         return "unknown"
     if to_status in {"failed", "reject", "follow-up", "success"}:
         return to_status
-    return ""
+    return "active"
 
 
 def _get_flow_node_size(node_type: str) -> tuple[int, int]:
