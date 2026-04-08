@@ -140,6 +140,7 @@ resulted_sql = to_sql(intent_result)
 - 调用结果会额外提取 `verifier result: 0:` 形成 `verifier_failures`，并把出现次数记为 `retry_count`；问题导航只显示时间，但会在成功/失败/未知图标右上角叠加重试次数数字
 - 流程状态是三态：`failed / success / unknown`
 - `sql_flow exception: SQL is empty` 判定为失败；若在目标调用块（主线程+关联线程）里命中包含线程 ID 且带 `sqlflow res: sql:` 的日志行，则判定为成功；两者都未命中则判定为未知（中断或服务重启）
+- 汇总面板会按单日志文件展示同级指标：成功问题数、失败问题数、未知问题数、失败重试次数；并对重试原因做聚合统计（相同原因合并计数）
 - 兼容字段 `rewritten_question` 现在表示该次主调用的首个 `call sqlflow input:` 内容；完整改写链路看 `rewrite_questions`。子线程是否并入当前调用，则看它的完整标记 `MASK QUESTION: {改写后的问题}` 是否命中这条改写链
 - 静态 HTML 适合直接双击打开查看；执行按钮、页面内切换日志文件/目录这类交互能力必须通过 `--serve` 页面使用
 - `IR 表定义` 从 `表定义的IR：` 之后开始提取，不保留关键词前缀

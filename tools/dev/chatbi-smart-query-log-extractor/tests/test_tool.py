@@ -510,6 +510,14 @@ class ExtractorTests(unittest.TestCase):
         report = extract_report((FIXTURES_ROOT / "thread_reuse_chatbi.log").read_text(encoding="utf-8"), "thread_reuse_chatbi.log")
         html = render_html(report)
 
+        self.assertIn("成功问题数：1", html)
+        self.assertIn("失败问题数：1", html)
+        self.assertIn("未知问题数：1", html)
+        self.assertIn("失败重试次数：3", html)
+        self.assertIn("重试原因统计", html)
+        self.assertIn("first verifier failure（1次）", html)
+        self.assertIn("second verifier failure（1次）", html)
+        self.assertIn("second call verifier failure（1次）", html)
         self.assertIn("nav-status nav-status-success", html)
         self.assertIn("nav-status nav-status-failed", html)
         self.assertIn("nav-status nav-status-unknown", html)
@@ -532,6 +540,71 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('href="#question-1-match-1"', html)
         self.assertIn('href="#question-1-match-2"', html)
         self.assertNotIn('href="#question-1-match-1">111111111111111</a>', html)
+
+    def test_render_html_merges_same_retry_reason_counts_in_summary(self) -> None:
+        report = {
+            "tool": "chatbi-smart-query-log-extractor",
+            "version": "test",
+            "source_log": "summary.log",
+            "generated_at": "2026-04-08T00:00:00",
+            "total_questions": 1,
+            "questions": [
+                {
+                    "question": QUESTION,
+                    "total_matches": 2,
+                    "matches": [
+                        {
+                            "index": 1,
+                            "thread_id": "111111111111111",
+                            "match_id": "111111111111111:1",
+                            "anchor_timestamp": "2026-04-08 00:00:00.000",
+                            "anchor_line": "anchor-1",
+                            "line_number": 1,
+                            "associated_thread_ids": [],
+                            "rewrite_questions": [],
+                            "rag_results": [],
+                            "rewritten_question": "",
+                            "recalled_tables": [],
+                            "ir_table_definition": "",
+                            "final_prompt": {"raw": "", "system": "", "user": "", "combined": ""},
+                            "generated_ir": "",
+                            "complete_ir": "",
+                            "flow_status": "failed",
+                            "retry_count": 1,
+                            "verifier_failures": ["same reason"],
+                            "missing_sections": [],
+                            "parse_errors": [],
+                        },
+                        {
+                            "index": 2,
+                            "thread_id": "222222222222222",
+                            "match_id": "222222222222222:2",
+                            "anchor_timestamp": "2026-04-08 00:00:01.000",
+                            "anchor_line": "anchor-2",
+                            "line_number": 2,
+                            "associated_thread_ids": [],
+                            "rewrite_questions": [],
+                            "rag_results": [],
+                            "rewritten_question": "",
+                            "recalled_tables": [],
+                            "ir_table_definition": "",
+                            "final_prompt": {"raw": "", "system": "", "user": "", "combined": ""},
+                            "generated_ir": "",
+                            "complete_ir": "",
+                            "flow_status": "failed",
+                            "retry_count": 1,
+                            "verifier_failures": ["same reason"],
+                            "missing_sections": [],
+                            "parse_errors": [],
+                        },
+                    ],
+                }
+            ],
+        }
+
+        html = render_html(report)
+        self.assertIn("失败重试次数：2", html)
+        self.assertIn("same reason（2次）", html)
 
     def test_render_html_shows_associated_threads_for_cross_thread_call(self) -> None:
         report = extract_report((FIXTURES_ROOT / "cross_thread_chatbi.log").read_text(encoding="utf-8"), "cross_thread_chatbi.log")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import json
 from html import escape
 from typing import Any
@@ -10,6 +11,9 @@ def render_html(report: dict[str, Any]) -> str:
     generated_at = escape(report["generated_at"])
     total_questions = report["total_questions"]
     total_matches = sum(question_group["total_matches"] for question_group in report["questions"])
+    summary_stats = _collect_summary_stats(report["questions"])
+    summary_metrics_html = _render_summary_metrics(summary_stats)
+    summary_retry_reasons_html = _render_summary_retry_reasons(summary_stats["retry_reason_counts"])
 
     nav_items = []
     detail_sections = []
@@ -77,6 +81,69 @@ def render_html(report: dict[str, Any]) -> str:
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 8px 14px;
+    }}
+    .summary-metrics {{
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .summary-chip {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: #f8fbff;
+      color: #2c3f57;
+    }}
+    .summary-chip-success {{
+      color: var(--success-fg);
+      background: var(--success-bg);
+      border-color: #9ad8cb;
+    }}
+    .summary-chip-failed {{
+      color: var(--danger-fg);
+      background: #ffe3e3;
+      border-color: #efb0b0;
+    }}
+    .summary-chip-unknown {{
+      color: #516074;
+      background: #edf1f7;
+      border-color: #cbd5e1;
+    }}
+    .summary-chip-retry {{
+      color: #7a4a00;
+      background: #fff6db;
+      border-color: #f1c24b;
+    }}
+    .summary-reasons {{
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      background: #fafcff;
+    }}
+    .summary-reasons-title {{
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #42546d;
+    }}
+    .summary-reasons-list {{
+      margin: 0;
+      padding-left: 18px;
+      color: #42546d;
+      font-size: 13px;
+      line-height: 1.5;
+    }}
+    .summary-reasons-empty {{
+      margin: 0;
+      color: #6f7f95;
+      font-size: 13px;
     }}
     .layout {{
       display: grid;
@@ -419,6 +486,8 @@ def render_html(report: dict[str, Any]) -> str:
         <div class="meta">命中调用总数：{total_matches}</div>
         <div class="meta">生成时间：{generated_at}</div>
       </div>
+      {summary_metrics_html}
+      {summary_retry_reasons_html}
     </section>
     <div class="layout">
       <aside class="nav">
@@ -618,6 +687,73 @@ def render_html(report: dict[str, Any]) -> str:
   </script>
 </body>
 </html>"""
+
+
+def _collect_summary_stats(question_groups: list[dict[str, Any]]) -> dict[str, Any]:
+    success_count = 0
+    failed_count = 0
+    unknown_count = 0
+    failed_retry_count = 0
+    retry_reason_counts: Counter[str] = Counter()
+
+    for question_group in question_groups:
+        for match in question_group.get("matches", []):
+            flow_status = str(match.get("flow_status", "unknown"))
+            if flow_status == "success":
+                success_count += 1
+            elif flow_status == "failed":
+                failed_count += 1
+            else:
+                unknown_count += 1
+
+            verifier_failures = match.get("verifier_failures", [])
+            if isinstance(verifier_failures, list):
+                for reason in verifier_failures:
+                    reason_text = str(reason).strip()
+                    if not reason_text:
+                        continue
+                    failed_retry_count += 1
+                    retry_reason_counts[reason_text] += 1
+
+    return {
+        "success_count": success_count,
+        "failed_count": failed_count,
+        "unknown_count": unknown_count,
+        "failed_retry_count": failed_retry_count,
+        "retry_reason_counts": retry_reason_counts,
+    }
+
+
+def _render_summary_metrics(summary_stats: dict[str, Any]) -> str:
+    return f"""
+    <section class="summary-metrics">
+      <span class="summary-chip summary-chip-success">成功问题数：{summary_stats["success_count"]}</span>
+      <span class="summary-chip summary-chip-failed">失败问题数：{summary_stats["failed_count"]}</span>
+      <span class="summary-chip summary-chip-unknown">未知问题数：{summary_stats["unknown_count"]}</span>
+      <span class="summary-chip summary-chip-retry">失败重试次数：{summary_stats["failed_retry_count"]}</span>
+    </section>
+    """
+
+
+def _render_summary_retry_reasons(retry_reason_counts: Counter[str]) -> str:
+    if not retry_reason_counts:
+        return """
+    <section class="summary-reasons">
+      <h3 class="summary-reasons-title">重试原因统计</h3>
+      <p class="summary-reasons-empty">无</p>
+    </section>
+    """
+
+    items = "".join(
+        f"<li>{escape(reason)}（{count}次）</li>"
+        for reason, count in sorted(retry_reason_counts.items(), key=lambda item: (-item[1], item[0]))
+    )
+    return f"""
+    <section class="summary-reasons">
+      <h3 class="summary-reasons-title">重试原因统计</h3>
+      <ul class="summary-reasons-list">{items}</ul>
+    </section>
+    """
 
 
 def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> str:
