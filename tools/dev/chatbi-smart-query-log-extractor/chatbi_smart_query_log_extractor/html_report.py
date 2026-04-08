@@ -7,19 +7,20 @@ from typing import Any
 
 
 FLOW_NODE_SPECS = [
-    {"key": "extract_question", "label": "1 提取用户问题", "meta": "锚点"},
-    {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "预处理"},
-    {"key": "preprocess_knowledge", "label": "2.2 预处理知识", "meta": "预处理"},
-    {"key": "preprocess_decision", "label": "2.3 预处理判定", "meta": "预处理"},
-    {"key": "mask_question", "label": "3.1 标准化问题", "meta": "Text2Data"},
-    {"key": "sql_knowledge", "label": "3.2 SQL 生成知识", "meta": "Text2Data"},
-    {"key": "sql_rewrite", "label": "3.3 SQL 改写", "meta": "Text2Data"},
-    {"key": "recalled_tables", "label": "3.4 表检索", "meta": "Text2Data"},
-    {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "Text2Data"},
-    {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "Text2Data"},
-    {"key": "verifier", "label": "3.7 校验", "meta": "Text2Data"},
-    {"key": "generated_ir", "label": "3.8 生成 IR", "meta": "Text2Data"},
-    {"key": "end", "label": "4 结束", "meta": "结果"},
+    {"key": "start", "label": "开始", "meta": "起始", "type": "start"},
+    {"key": "extract_question", "label": "1 提取用户问题", "meta": "锚点", "type": "process"},
+    {"key": "ac_enriched_question", "label": "2.1 AC 补充", "meta": "预处理", "type": "process"},
+    {"key": "preprocess_knowledge", "label": "2.2 预处理知识", "meta": "预处理", "type": "process"},
+    {"key": "preprocess_decision", "label": "2.3 预处理判定", "meta": "判断", "type": "decision"},
+    {"key": "mask_question", "label": "3.1 标准化问题", "meta": "Text2Data", "type": "process"},
+    {"key": "sql_knowledge", "label": "3.2 SQL 生成知识", "meta": "Text2Data", "type": "process"},
+    {"key": "sql_rewrite", "label": "3.3 SQL 改写", "meta": "Text2Data", "type": "process"},
+    {"key": "recalled_tables", "label": "3.4 表检索", "meta": "Text2Data", "type": "process"},
+    {"key": "ir_table_definition", "label": "3.5 IR 表定义", "meta": "Text2Data", "type": "process"},
+    {"key": "final_prompt", "label": "3.6 最终 Prompt", "meta": "Text2Data", "type": "process"},
+    {"key": "verifier", "label": "3.7 校验", "meta": "判断", "type": "decision"},
+    {"key": "generated_ir", "label": "3.8 生成 IR", "meta": "Text2Data", "type": "process"},
+    {"key": "end", "label": "结束", "meta": "结果", "type": "end"},
 ]
 
 
@@ -34,13 +35,18 @@ def render_html(report: dict[str, Any]) -> str:
 
     nav_items = []
     detail_sections = []
+    flow_views = []
+    active_flow_anchor = ""
     for question_index, question_group in enumerate(report["questions"], start=1):
         question_anchor_id = f"question-{question_index}"
         question_label = question_group["question"]
         match_nav_items = []
         for match in question_group["matches"]:
             anchor_id = f"{question_anchor_id}-match-{match['index']}"
+            if not active_flow_anchor:
+                active_flow_anchor = anchor_id
             match_nav_items.append(f"<li>{_render_nav_match_link(anchor_id, match, question_anchor_id)}</li>")
+            flow_views.append(_render_flow_view(anchor_id, match, active=anchor_id == active_flow_anchor))
         nested_nav = f"<ul>{''.join(match_nav_items)}</ul>" if match_nav_items else ""
         nav_items.append(
             f'<li><a class="nav-question-link" data-question-anchor="{escape(question_anchor_id)}" '
@@ -50,6 +56,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     nav_html = "".join(nav_items) if nav_items else "<li>未发现任何问题</li>"
     details_html = "".join(detail_sections) if detail_sections else "<section class=\"empty\">未发现任何问题。</section>"
+    flow_sidebar_html = _render_flow_sidebar("".join(flow_views), active_flow_anchor)
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -179,9 +186,12 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 14px;
+      grid-template-columns: 280px minmax(0, 1fr) 396px;
+      gap: 12px;
       align-items: start;
+    }}
+    .layout.layout-flow-hidden {{
+      grid-template-columns: 280px minmax(0, 1fr);
     }}
     .nav {{
       position: sticky;
@@ -288,6 +298,166 @@ def render_html(report: dict[str, Any]) -> str:
     .matches {{
       display: grid;
       gap: 14px;
+      min-width: 0;
+    }}
+    .flow-sidebar {{
+      position: sticky;
+      top: 12px;
+      max-height: calc(100vh - 24px);
+      min-width: 0;
+    }}
+    .flow-sidebar[hidden] {{
+      display: none;
+    }}
+    .flow-sidebar-shell {{
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: calc(100vh - 24px);
+      background: linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }}
+    .flow-sidebar-header {{
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid #e3eaf4;
+      background: linear-gradient(180deg, #fdfefe 0%, #f3f8ff 100%);
+    }}
+    .flow-sidebar-header h2 {{
+      margin: 0;
+      font-size: 16px;
+      color: #1f3048;
+    }}
+    .flow-sidebar-subtitle {{
+      margin-top: 6px;
+      color: #607086;
+      font-size: 12px;
+      line-height: 1.45;
+    }}
+    .flow-sidebar-body {{
+      position: relative;
+      padding: 12px;
+      overflow: auto;
+    }}
+    .flow-view {{
+      display: grid;
+      gap: 10px;
+    }}
+    .flow-view[hidden] {{
+      display: none;
+    }}
+    .flow-view-title {{
+      padding: 8px 10px;
+      border: 1px solid #dce5f2;
+      border-radius: 12px;
+      background: #f8fbff;
+      color: #334a67;
+      font-size: 12px;
+      line-height: 1.45;
+    }}
+    .flow-svg-wrap {{
+      position: relative;
+      border: 1px solid #d9e2ef;
+      border-radius: 16px;
+      background: #ffffff;
+      padding: 10px 8px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }}
+    .flow-svg {{
+      display: block;
+      width: 100%;
+      height: auto;
+    }}
+    .flow-svg .flow-node-shape {{
+      stroke-width: 1.5;
+      transition: fill 0.16s ease, stroke 0.16s ease, filter 0.16s ease;
+    }}
+    .flow-svg .flow-node-text {{
+      fill: #243447;
+      font-size: 12px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+    }}
+    .flow-svg .flow-node-subtext {{
+      fill: #607086;
+      font-size: 10px;
+      font-weight: 600;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+    }}
+    .flow-svg .flow-connector-line {{
+      stroke: #99a8bb;
+      stroke-width: 1.6;
+      fill: none;
+      marker-end: url(#flow-arrow-head);
+    }}
+    .flow-svg .flow-node-hitbox {{
+      fill: transparent;
+      cursor: pointer;
+    }}
+    .flow-svg .flow-node.flow-node-complete .flow-node-shape {{
+      fill: #effbf7;
+      stroke: #87cdb8;
+    }}
+    .flow-svg .flow-node.flow-node-success .flow-node-shape {{
+      fill: #dcf6ed;
+      stroke: #45b28d;
+    }}
+    .flow-svg .flow-node.flow-node-failed .flow-node-shape {{
+      fill: #ffe5e5;
+      stroke: #cf5d5d;
+    }}
+    .flow-svg .flow-node.flow-node-reject .flow-node-shape {{
+      fill: #fff2cf;
+      stroke: #d6a640;
+    }}
+    .flow-svg .flow-node.flow-node-follow-up .flow-node-shape {{
+      fill: #e5efff;
+      stroke: #6b9bf0;
+    }}
+    .flow-svg .flow-node.flow-node-unknown .flow-node-shape {{
+      fill: #eef2f7;
+      stroke: #b8c2cf;
+    }}
+    .flow-svg .flow-node.flow-node-active .flow-node-shape {{
+      filter: drop-shadow(0 0 0.45rem rgba(15, 118, 110, 0.18));
+      stroke-width: 2;
+    }}
+    .flow-tooltip-popup {{
+      position: absolute;
+      min-width: 220px;
+      max-width: min(320px, calc(100% - 20px));
+      border: 1px solid #d2dceb;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
+      overflow: hidden;
+      z-index: 24;
+    }}
+    .flow-tooltip-popup[hidden] {{
+      display: none;
+    }}
+    .flow-tooltip-title {{
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #e5edf7;
+      background: #f7faff;
+      color: #324a68;
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    .flow-tooltip-popup pre {{
+      max-height: 220px;
+      margin: 0;
+      padding: 12px;
+      border-radius: 0;
+      background: transparent;
+      color: #223247;
+      overflow: auto;
+      white-space: pre-wrap;
     }}
     .question-group {{
       display: grid;
@@ -339,176 +509,6 @@ def render_html(report: dict[str, Any]) -> str:
       flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 16px;
-    }}
-    .flow-diagram {{
-      margin-bottom: 16px;
-      padding: 14px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: linear-gradient(180deg, #fbfdff 0%, #f4f8ff 100%);
-      overflow: hidden;
-    }}
-    .flow-diagram h3 {{
-      margin: 0 0 10px;
-      font-size: 15px;
-      color: #344760;
-    }}
-    .flow-diagram-track {{
-      display: flex;
-      align-items: stretch;
-      gap: 0;
-      overflow-x: auto;
-      padding: 4px 2px 8px;
-    }}
-    .flow-node {{
-      position: relative;
-      flex: 0 0 148px;
-      min-width: 148px;
-    }}
-    .flow-node-button {{
-      width: 100%;
-      min-height: 86px;
-      padding: 12px 12px 10px;
-      border: 1px solid #cfd8e6;
-      border-radius: 14px;
-      background: #ffffff;
-      color: var(--text);
-      text-align: left;
-      cursor: pointer;
-      transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
-    }}
-    .flow-node-button:hover,
-    .flow-node-button:focus-visible {{
-      transform: translateY(-1px);
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.10);
-      outline: none;
-    }}
-    .flow-node-index {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 28px;
-      height: 28px;
-      padding: 0 8px;
-      border-radius: 999px;
-      background: #edf2fb;
-      color: #43546b;
-      font-size: 11px;
-      font-weight: 700;
-    }}
-    .flow-node-title {{
-      display: block;
-      margin-top: 10px;
-      font-size: 13px;
-      line-height: 1.35;
-      font-weight: 700;
-    }}
-    .flow-node-meta {{
-      display: block;
-      margin-top: 6px;
-      color: #607086;
-      font-size: 11px;
-      line-height: 1.35;
-    }}
-    .flow-node-complete .flow-node-button {{
-      border-color: #9fd0c6;
-      background: #f3fbf8;
-    }}
-    .flow-node-complete .flow-node-index {{
-      background: #dff6f0;
-      color: var(--success-fg);
-    }}
-    .flow-node-success .flow-node-button {{
-      border-color: #7bcdb8;
-      background: linear-gradient(180deg, #effcf8 0%, #dcf7ef 100%);
-    }}
-    .flow-node-success .flow-node-index {{
-      background: #ccefe4;
-      color: var(--success-fg);
-    }}
-    .flow-node-failed .flow-node-button {{
-      border-color: #e6a8a8;
-      background: linear-gradient(180deg, #fff5f5 0%, #ffe3e3 100%);
-    }}
-    .flow-node-failed .flow-node-index {{
-      background: #ffd5d5;
-      color: var(--danger-fg);
-    }}
-    .flow-node-reject .flow-node-button {{
-      border-color: #ebc46c;
-      background: linear-gradient(180deg, #fff9e9 0%, #fff1c9 100%);
-    }}
-    .flow-node-reject .flow-node-index {{
-      background: #ffe8a6;
-      color: var(--reject-fg);
-    }}
-    .flow-node-follow-up .flow-node-button {{
-      border-color: #afc9f7;
-      background: linear-gradient(180deg, #f4f8ff 0%, #e5efff 100%);
-    }}
-    .flow-node-follow-up .flow-node-index {{
-      background: #d6e6ff;
-      color: var(--follow-fg);
-    }}
-    .flow-node-unknown .flow-node-button {{
-      border-color: #d8dee8;
-      background: #f3f5f8;
-      color: #7b8796;
-    }}
-    .flow-node-unknown .flow-node-index {{
-      background: #e3e8ef;
-      color: #6c7786;
-    }}
-    .flow-connector {{
-      flex: 0 0 34px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #9aa8ba;
-      font-size: 18px;
-      font-weight: 700;
-    }}
-    .flow-tooltip {{
-      position: absolute;
-      top: calc(100% + 8px);
-      left: 0;
-      width: min(360px, 72vw);
-      padding: 0;
-      border: 1px solid #d1dae8;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.98);
-      box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
-      opacity: 0;
-      visibility: hidden;
-      transform: translateY(4px);
-      transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
-      z-index: 18;
-      pointer-events: none;
-      overflow: hidden;
-    }}
-    .flow-node:hover .flow-tooltip,
-    .flow-node:focus-within .flow-tooltip,
-    .flow-node.flow-node-open .flow-tooltip {{
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
-    }}
-    .flow-tooltip-header {{
-      padding: 10px 12px 8px;
-      border-bottom: 1px solid #e4ebf5;
-      background: #f7faff;
-      font-size: 12px;
-      font-weight: 700;
-      color: #38506e;
-    }}
-    .flow-tooltip pre {{
-      max-height: 240px;
-      padding: 12px;
-      border-radius: 0;
-      background: transparent;
-      color: #223247;
-      overflow: auto;
-      white-space: pre-wrap;
     }}
     .status-chip {{
       display: inline-flex;
@@ -806,26 +806,18 @@ def render_html(report: dict[str, Any]) -> str:
       .layout {{
         grid-template-columns: 1fr;
       }}
+      .layout.layout-flow-hidden {{
+        grid-template-columns: 1fr;
+      }}
       .nav {{
         position: static;
         max-height: none;
         overflow-y: visible;
       }}
-      .flow-diagram-track {{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        overflow: visible;
-      }}
-      .flow-node {{
-        min-width: 0;
-        flex: initial;
-      }}
-      .flow-connector {{
-        display: none;
-      }}
-      .flow-tooltip {{
-        width: min(92vw, 360px);
+      .flow-sidebar {{
+        position: static;
+        max-height: none;
+        order: -1;
       }}
       .settings-fab {{
         right: 10px;
@@ -858,6 +850,7 @@ def render_html(report: dict[str, Any]) -> str:
         <ul>{nav_html}</ul>
       </aside>
       <main class="matches">{details_html}</main>
+      {flow_sidebar_html}
     </div>
   </div>
   <button type="button" id="settings-toggle" class="settings-fab" aria-controls="settings-panel" aria-expanded="false">设置</button>
@@ -1090,6 +1083,19 @@ def render_html(report: dict[str, Any]) -> str:
         const visible = key ? detailFieldVisibility[key] !== false : true;
         block.classList.toggle('config-hidden', !visible);
       }});
+      const layout = document.querySelector('.layout');
+      const flowSidebar = document.getElementById('flow-sidebar');
+      const flowVisible = detailFieldVisibility.flow_diagram !== false;
+      if (layout) {{
+        layout.classList.toggle('layout-flow-hidden', !flowVisible);
+      }}
+      if (flowSidebar) {{
+        if (flowVisible) {{
+          flowSidebar.removeAttribute('hidden');
+        }} else {{
+          flowSidebar.setAttribute('hidden', '');
+        }}
+      }}
     }}
 
     function renderSettingsList() {{
@@ -1177,44 +1183,46 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     function closeOpenFlowTooltips() {{
-      document.querySelectorAll('.flow-node.flow-node-open').forEach((node) => {{
-        node.classList.remove('flow-node-open');
-        const button = node.querySelector('[data-flow-node-button]');
-        if (button) {{
-          button.setAttribute('aria-expanded', 'false');
-        }}
+      const popup = document.getElementById('flow-tooltip-popup');
+      if (popup) {{
+        popup.setAttribute('hidden', '');
+      }}
+      document.querySelectorAll('.flow-svg .flow-node.flow-node-active').forEach((node) => {{
+        node.classList.remove('flow-node-active');
       }});
     }}
 
-    function initFlowTooltips() {{
-      document.querySelectorAll('[data-flow-node-button]').forEach((button) => {{
-        button.addEventListener('click', (event) => {{
+    function showFlowTooltip(node, event) {{
+      const popup = document.getElementById('flow-tooltip-popup');
+      const title = document.getElementById('flow-tooltip-title');
+      const content = document.getElementById('flow-tooltip-content');
+      const sidebarBody = document.getElementById('flow-sidebar-body');
+      if (!popup || !title || !content || !sidebarBody || !node) {{
+        return;
+      }}
+      closeOpenFlowTooltips();
+      node.classList.add('flow-node-active');
+      title.textContent = node.getAttribute('data-node-title') || '';
+      content.textContent = node.getAttribute('data-node-summary') || '';
+      popup.removeAttribute('hidden');
+
+      const bodyRect = sidebarBody.getBoundingClientRect();
+      const nodeRect = node.getBoundingClientRect();
+      const top = nodeRect.top - bodyRect.top + sidebarBody.scrollTop + Math.min(24, nodeRect.height / 2);
+      const left = Math.max(8, Math.min(bodyRect.width - popup.offsetWidth - 8, nodeRect.right - bodyRect.left + 8));
+      popup.style.top = `${{top}}px`;
+      popup.style.left = `${{left}}px`;
+    }}
+
+    function bindFlowNodeEvents() {{
+      document.querySelectorAll('.flow-svg [data-flow-node="true"]').forEach((node) => {{
+        node.addEventListener('mouseenter', (event) => showFlowTooltip(node, event));
+        node.addEventListener('focusin', (event) => showFlowTooltip(node, event));
+        node.addEventListener('click', (event) => {{
           event.preventDefault();
           event.stopPropagation();
-          const node = button.closest('.flow-node');
-          if (!node) {{
-            return;
-          }}
-          const willOpen = !node.classList.contains('flow-node-open');
-          closeOpenFlowTooltips();
-          if (willOpen) {{
-            node.classList.add('flow-node-open');
-            button.setAttribute('aria-expanded', 'true');
-          }} else {{
-            button.setAttribute('aria-expanded', 'false');
-          }}
+          showFlowTooltip(node, event);
         }});
-      }});
-
-      document.addEventListener('click', (event) => {{
-        const target = event.target;
-        if (!(target instanceof Node)) {{
-          return;
-        }}
-        if (target instanceof Element && target.closest('.flow-node')) {{
-          return;
-        }}
-        closeOpenFlowTooltips();
       }});
     }}
 
@@ -1271,12 +1279,12 @@ def render_html(report: dict[str, Any]) -> str:
       scrollNavIntoView(activeLink);
     }}
 
-    function getActiveAnchorFromViewport() {{
-      const sections = Array.from(document.querySelectorAll('.question-group[id], .match[id]'));
+    function getActiveMatchAnchorFromViewport() {{
+      const sections = Array.from(document.querySelectorAll('.match[id]'));
       if (!sections.length) {{
         return '';
       }}
-      const threshold = 136;
+      const threshold = 160;
       let active = sections[0].id;
       for (const section of sections) {{
         if (section.getBoundingClientRect().top - threshold <= 0) {{
@@ -1288,27 +1296,71 @@ def render_html(report: dict[str, Any]) -> str:
       return active;
     }}
 
-    function syncNavToViewport() {{
+    function resolveMatchAnchor(anchorId = '') {{
+      if (!anchorId) {{
+        return '';
+      }}
+      const directMatch = document.getElementById(anchorId);
+      if (directMatch && directMatch.classList.contains('match')) {{
+        return anchorId;
+      }}
+      const firstNestedMatch = document.querySelector(`.match[id^="${{CSS.escape(anchorId)}}-match-"]`);
+      return firstNestedMatch ? firstNestedMatch.id : '';
+    }}
+
+    function setActiveFlowView(anchorId = '') {{
+      const resolvedAnchorId = resolveMatchAnchor(anchorId) || getActiveMatchAnchorFromViewport();
+      const flowSidebar = document.getElementById('flow-sidebar');
+      if (!flowSidebar || !resolvedAnchorId) {{
+        return;
+      }}
+      flowSidebar.setAttribute('data-active-match-anchor', resolvedAnchorId);
+      document.querySelectorAll('.flow-view[data-flow-match-anchor]').forEach((view) => {{
+        const matches = view.getAttribute('data-flow-match-anchor') === resolvedAnchorId;
+        if (matches) {{
+          view.removeAttribute('hidden');
+        }} else {{
+          view.setAttribute('hidden', '');
+        }}
+      }});
+      closeOpenFlowTooltips();
+    }}
+
+    function syncActivePanels() {{
       if (navSyncTicking) {{
         return;
       }}
       navSyncTicking = true;
       window.requestAnimationFrame(() => {{
-        updateActiveNavLinks(getActiveAnchorFromViewport());
+        const activeMatchAnchor = getActiveMatchAnchorFromViewport();
+        updateActiveNavLinks(activeMatchAnchor);
+        setActiveFlowView(activeMatchAnchor);
         navSyncTicking = false;
       }});
     }}
 
     function initializePage() {{
       initSettingsPanel();
-      initFlowTooltips();
-      updateActiveNavLinks();
-      syncNavToViewport();
+      bindFlowNodeEvents();
+      const initialAnchor = resolveMatchAnchor(window.location.hash ? window.location.hash.slice(1) : '') || getActiveMatchAnchorFromViewport();
+      updateActiveNavLinks(initialAnchor);
+      setActiveFlowView(initialAnchor);
+      syncActivePanels();
+      document.addEventListener('click', (event) => {{
+        const target = event.target;
+        if (!(target instanceof Node)) {{
+          return;
+        }}
+        if (target instanceof Element && target.closest('[data-flow-node="true"]')) {{
+          return;
+        }}
+        closeOpenFlowTooltips();
+      }});
     }}
 
-    window.addEventListener('hashchange', () => updateActiveNavLinks());
-    window.addEventListener('scroll', syncNavToViewport, {{ passive: true }});
-    window.addEventListener('resize', syncNavToViewport);
+    window.addEventListener('hashchange', syncActivePanels);
+    window.addEventListener('scroll', syncActivePanels, {{ passive: true }});
+    window.addEventListener('resize', syncActivePanels);
     window.addEventListener('DOMContentLoaded', initializePage);
   </script>
 </body>
@@ -1407,40 +1459,106 @@ def _render_question_group(anchor_id: str, question_group: dict[str, Any]) -> st
     """
 
 
-def _render_flow_diagram_section(anchor_id: str, match: dict[str, Any]) -> str:
-    nodes = _build_flow_nodes(match)
-    parts = []
-    for index, node in enumerate(nodes):
-        node_id = f"flow-node-{anchor_id}-{node['key'].replace('_', '-')}"
-        parts.append(_render_flow_node(node_id, node))
-        if index < len(nodes) - 1:
-            parts.append('<div class="flow-connector" aria-hidden="true">→</div>')
+def _render_flow_sidebar(flow_views_html: str, active_flow_anchor: str) -> str:
+    if not flow_views_html:
+        return """
+        <aside id="flow-sidebar" class="flow-sidebar" hidden></aside>
+        """
     return f"""
-    <section class="flow-diagram">
-      <h3>调用流程图</h3>
-      <div class="flow-diagram-track">{''.join(parts)}</div>
+    <aside id="flow-sidebar" class="flow-sidebar" data-active-match-anchor="{escape(active_flow_anchor)}">
+      <section class="flow-sidebar-shell">
+        <div class="flow-sidebar-header">
+          <h2>当前调用流程</h2>
+          <div class="flow-sidebar-subtitle">正式流程图固定显示在右侧，随当前进入视口的调用自动切换。</div>
+        </div>
+        <div id="flow-sidebar-body" class="flow-sidebar-body">
+          {flow_views_html}
+          <div id="flow-tooltip-popup" class="flow-tooltip-popup" hidden>
+            <div id="flow-tooltip-title" class="flow-tooltip-title"></div>
+            <pre id="flow-tooltip-content"></pre>
+          </div>
+        </div>
+      </section>
+    </aside>
+    """
+
+
+def _render_flow_view(anchor_id: str, match: dict[str, Any], active: bool) -> str:
+    nodes = _build_flow_nodes(match)
+    hidden_attr = "" if active else " hidden"
+    svg = _render_flow_svg(anchor_id, nodes)
+    title = f"{match['anchor_timestamp']} | 第 {match['index']} 次调用"
+    return f"""
+    <section class="flow-view" data-flow-match-anchor="{escape(anchor_id)}"{hidden_attr}>
+      <div class="flow-view-title">{escape(title)}</div>
+      <div class="flow-svg-wrap">
+        {svg}
+      </div>
     </section>
     """
 
 
-def _render_flow_node(node_id: str, node: dict[str, str]) -> str:
-    tooltip = escape(node["detail"])
-    title = escape(node["label"])
+def _render_flow_svg(anchor_id: str, nodes: list[dict[str, str]]) -> str:
+    center_x = 180
+    width = 360
+    top_padding = 28
+    step = 102
+    height = top_padding * 2 + step * (len(nodes) - 1) + 70
+    node_parts = []
+    connector_parts = []
+
+    for index, node in enumerate(nodes):
+        y = top_padding + index * step
+        if index < len(nodes) - 1:
+            connector_parts.append(
+                f'<path class="flow-connector-line" d="M {center_x} {y + 32} L {center_x} {y + step - 42}" />'
+            )
+        node_parts.append(_render_svg_flow_node(anchor_id, node, center_x, y))
+
+    return f"""
+    <svg class="flow-svg" viewBox="0 0 {width} {height}" role="img" aria-label="调用流程图">
+      <defs>
+        <marker id="flow-arrow-head" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
+          <polygon points="0 0, 7 3.5, 0 7" fill="#99a8bb"></polygon>
+        </marker>
+      </defs>
+      {''.join(connector_parts)}
+      {''.join(node_parts)}
+    </svg>
+    """
+
+
+def _render_svg_flow_node(anchor_id: str, node: dict[str, str], center_x: int, top_y: int) -> str:
+    node_id = f"flow-node-{anchor_id}-{node['key'].replace('_', '-')}"
+    label = escape(node["label"])
     meta = escape(node["meta"])
     status = escape(node["status"])
-    key = escape(node["key"].replace("_", "-"))
+    node_type = escape(node["type"])
+    summary_attr = _escape_data_attr(node["detail"])
+    if node["type"] in {"start", "end"}:
+        shape = (
+            f'<ellipse class="flow-node-shape" cx="{center_x}" cy="{top_y + 30}" rx="86" ry="28"></ellipse>'
+        )
+    elif node["type"] == "decision":
+        shape = (
+            f'<polygon class="flow-node-shape" points="{center_x},{top_y} {center_x + 84},{top_y + 30} '
+            f'{center_x},{top_y + 60} {center_x - 84},{top_y + 30}"></polygon>'
+        )
+    else:
+        shape = (
+            f'<rect class="flow-node-shape" x="{center_x - 92}" y="{top_y}" width="184" height="60" rx="12" ry="12"></rect>'
+        )
+
     return f"""
-    <div id="{escape(node_id)}" class="flow-node flow-node-{status}" data-flow-node-key="{key}">
-      <button type="button" class="flow-node-button" data-flow-node-button aria-expanded="false">
-        <span class="flow-node-index">{escape(node["index"])}</span>
-        <span class="flow-node-title">{title}</span>
-        <span class="flow-node-meta">{meta}</span>
-      </button>
-      <div class="flow-tooltip" role="tooltip">
-        <div class="flow-tooltip-header">{title}</div>
-        <pre>{tooltip}</pre>
-      </div>
-    </div>
+    <g id="{escape(node_id)}" class="flow-node flow-node-{status} flow-node-{node_type}"
+       data-flow-node="true"
+       data-node-title="{label}"
+       data-node-summary="{summary_attr}">
+      {shape}
+      <text class="flow-node-text" x="{center_x}" y="{top_y + 25}">{label}</text>
+      <text class="flow-node-subtext" x="{center_x}" y="{top_y + 43}">{meta}</text>
+      <rect class="flow-node-hitbox" x="{center_x - 104}" y="{top_y - 10}" width="208" height="80" rx="16" ry="16"></rect>
+    </g>
     """
 
 
@@ -1473,7 +1591,6 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
         or ("sql_generation_knowledge" in skipped_sections and "few_shot_knowledge" in skipped_sections)
     )
     sections = [
-        _wrap_config_item("flow_diagram", _render_flow_diagram_section(anchor_id, match)),
         _wrap_config_item("status_summary", _render_status_summary(match)),
     ]
     sections.extend([
@@ -1572,6 +1689,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
     end_text = _format_end_tooltip(match)
 
     direct = {
+        "start": True,
         "extract_question": bool(str(match.get("question", "")).strip() or str(match.get("anchor_line", "")).strip()),
         "ac_enriched_question": bool(str(match.get("ac_enriched_question", "")).strip()),
         "preprocess_knowledge": bool(preprocess_knowledge_text),
@@ -1591,6 +1709,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
     }
 
     reached = {
+        "start": True,
         "extract_question": direct["extract_question"],
         "ac_enriched_question": direct["ac_enriched_question"] or any(
             direct[key]
@@ -1683,6 +1802,7 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
     }
 
     details = {
+        "start": "流程开始，已定位到当前调用实例。",
         "extract_question": _format_extract_question_tooltip(match),
         "ac_enriched_question": str(match.get("ac_enriched_question", "")).strip(),
         "preprocess_knowledge": preprocess_knowledge_text,
@@ -1728,8 +1848,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "key": key,
                 "label": spec["label"],
                 "meta": spec["meta"],
-                "index": spec["label"].split(" ", 1)[0],
+                "index": spec["label"].split(" ", 1)[0] if " " in spec["label"] else spec["label"],
                 "status": status,
+                "type": str(spec["type"]),
                 "detail": detail,
             }
         )
@@ -1851,6 +1972,10 @@ def _format_list_tooltip(items: Any) -> str:
         return ""
     values = [str(item).strip() for item in items if str(item).strip()]
     return "\n".join(values)
+
+
+def _escape_data_attr(value: str) -> str:
+    return escape(value, quote=True).replace("\n", "&#10;")
 
 
 def _render_nav_match_link(anchor_id: str, match: dict[str, Any], question_anchor_id: str) -> str:
