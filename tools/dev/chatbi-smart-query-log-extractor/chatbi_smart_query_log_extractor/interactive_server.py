@@ -311,43 +311,61 @@ def _render_service_page(has_report: bool) -> str:
     body {{
       margin: 0;
       font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 260px);
+      background: linear-gradient(180deg, #eef4ff 0%, var(--bg) 180px);
       color: var(--text);
     }}
     .page {{
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 24px;
+      width: 100%;
+      padding: 8px 10px;
       display: grid;
-      gap: 20px;
+      gap: 10px;
+      min-height: 100vh;
     }}
     .panel {{
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 12px;
       box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
-      padding: 20px;
+      padding: 12px;
+    }}
+    .panel h2 {{
+      margin: 0 0 8px;
+      font-size: 15px;
+    }}
+    .service-toolbar {{
+      padding: 10px 12px;
+    }}
+    .service-toolbar h1 {{
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+    }}
+    .service-desc {{
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
     }}
     .controls {{
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
-      margin-top: 12px;
+      margin-top: 8px;
     }}
     .picker-label {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 120px;
-      height: 38px;
-      padding: 0 14px;
-      border-radius: 10px;
+      min-width: 110px;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 8px;
       border: 1px solid var(--border);
       background: #f8fbff;
       color: var(--accent);
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
     }}
     .picker-label:hover {{
@@ -358,14 +376,19 @@ def _render_service_page(has_report: bool) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: 320px 1fr;
-      gap: 20px;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 10px;
       align-items: start;
+    }}
+    .result-panel {{
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: calc(100vh - 128px);
     }}
     .file-list {{
       display: grid;
-      gap: 10px;
-      max-height: 70vh;
+      gap: 8px;
+      max-height: calc(100vh - 190px);
       overflow: auto;
     }}
     .file-item {{
@@ -387,33 +410,39 @@ def _render_service_page(has_report: bool) -> str:
       background: #edf9f7;
     }}
     .status {{
-      margin-top: 12px;
-      font-size: 13px;
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.35;
       color: var(--muted);
       white-space: pre-wrap;
     }}
     .report-frame {{
       width: 100%;
-      min-height: 78vh;
+      min-height: 68vh;
+      height: 100%;
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 12px;
       background: #ffffff;
     }}
     @media (max-width: 1080px) {{
       .layout {{
         grid-template-columns: 1fr;
       }}
+      .result-panel {{
+        min-height: auto;
+      }}
       .report-frame {{
         min-height: 60vh;
+        height: 60vh;
       }}
     }}
   </style>
 </head>
 <body>
   <div class="page">
-    <section class="panel">
+    <section class="panel service-toolbar">
       <h1>ChatBI 日志浏览服务</h1>
-      <div>固定单端口运行。你可以直接在这个页面选择日志文件，或选择日志目录后按文件逐个解析。</div>
+      <div class="service-desc">固定单端口运行，支持选择日志文件或日志目录后逐个解析。</div>
       <div class="controls">
         <label class="picker-label" for="log-file-input">选择日志文件</label>
         <input id="log-file-input" class="picker-input" type="file" accept=".log,.txt,.out,.text,*/*" />
@@ -429,7 +458,7 @@ def _render_service_page(has_report: bool) -> str:
           <div class="status">暂无文件</div>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel result-panel">
         <h2>解析结果</h2>
         <iframe id="report-frame" class="report-frame" src="{initial_src}" title="解析结果"></iframe>
       </section>

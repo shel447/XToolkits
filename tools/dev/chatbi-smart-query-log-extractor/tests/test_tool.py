@@ -653,6 +653,9 @@ class ExtractorTests(unittest.TestCase):
             self.assertIn('id="selected-files"', html)
             self.assertIn('id="report-frame"', html)
             self.assertIn("/api/report", html)
+            self.assertNotIn("max-width: 1600px;", html)
+            self.assertIn("padding: 8px 10px;", html)
+            self.assertIn("grid-template-columns: 280px minmax(0, 1fr);", html)
         finally:
             server.shutdown()
             server.server_close()
