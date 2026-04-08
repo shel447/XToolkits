@@ -58,9 +58,10 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--text);
     }}
     .page {{
-      max-width: 1560px;
-      margin: 0 auto;
-      padding: 14px 16px 18px;
+      width: 100%;
+      margin: 0;
+      padding: 10px 12px 14px;
+      box-sizing: border-box;
     }}
     .summary, .match, .empty {{
       background: var(--surface);
