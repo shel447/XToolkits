@@ -385,13 +385,8 @@ def render_html(report: dict[str, Any]) -> str:
       border-bottom: 1px solid #e3eaf4;
       background: linear-gradient(180deg, #fdfefe 0%, #f3f8ff 100%);
     }}
-    .flow-stage-header h2 {{
-      margin: 0;
-      font-size: 16px;
-      color: #1f3048;
-    }}
     .flow-stage-subtitle {{
-      margin-top: 6px;
+      margin-top: 0;
       color: #607086;
       font-size: 12px;
       line-height: 1.45;
@@ -956,7 +951,7 @@ def render_html(report: dict[str, Any]) -> str:
           </div>
           <div class="content-panels">
             <section id="content-panel-flow" class="content-panel" data-tab-panel="flow">
-              <div class="content-panel-body">{flow_stage_html}</div>
+              <div id="flow-panel-body" class="content-panel-body">{flow_stage_html}</div>
             </section>
             <section id="content-panel-details" class="content-panel" data-tab-panel="details" hidden>
               <div id="details-panel-body" class="content-panel-body">
@@ -1381,6 +1376,74 @@ def render_html(report: dict[str, Any]) -> str:
       }});
     }}
 
+    function getOrderedMatchAnchors() {{
+      return Array.from(document.querySelectorAll('.match[id]')).map((section) => section.id);
+    }}
+
+    function getAdjacentMatchAnchor(anchorId = '', offset = 0) {{
+      if (!anchorId || !offset) {{
+        return '';
+      }}
+      const anchors = getOrderedMatchAnchors();
+      const currentIndex = anchors.indexOf(anchorId);
+      if (currentIndex < 0) {{
+        return '';
+      }}
+      const nextIndex = currentIndex + offset;
+      if (nextIndex < 0 || nextIndex >= anchors.length) {{
+        return '';
+      }}
+      return anchors[nextIndex];
+    }}
+
+    function activateMatchAnchor(anchorId = '', options = {{ preserveTab: true, scrollDetails: false, resetFlowScroll: true }}) {{
+      const resolvedMatchAnchor = resolveMatchAnchor(anchorId) || anchorId;
+      if (!resolvedMatchAnchor) {{
+        return;
+      }}
+      if (window.location.hash !== `#${{resolvedMatchAnchor}}`) {{
+        window.history.replaceState(null, '', `#${{resolvedMatchAnchor}}`);
+      }}
+      updateActiveNavLinks(resolvedMatchAnchor);
+      setActiveFlowView(resolvedMatchAnchor, options.resetFlowScroll !== false);
+      if (options.preserveTab === false) {{
+        setActiveContentTab('details');
+      }} else {{
+        setActiveContentTab(activeContentTab);
+      }}
+      if (options.scrollDetails) {{
+        window.requestAnimationFrame(() => {{
+          scrollDetailsToAnchor(resolvedMatchAnchor);
+          syncActivePanels();
+        }});
+      }}
+    }}
+
+    function bindFlowStageNavigation() {{
+      const flowPanelBody = document.getElementById('flow-panel-body');
+      if (!flowPanelBody) {{
+        return;
+      }}
+      flowPanelBody.addEventListener('wheel', (event) => {{
+        if (activeContentTab !== 'flow') {{
+          return;
+        }}
+        const atBottom = flowPanelBody.scrollTop + flowPanelBody.clientHeight >= flowPanelBody.scrollHeight - 2;
+        const atTop = flowPanelBody.scrollTop <= 2;
+        let nextAnchor = '';
+        if (event.deltaY > 0 && atBottom) {{
+          nextAnchor = getAdjacentMatchAnchor(getActiveMatchAnchorFromViewport(), 1);
+        }} else if (event.deltaY < 0 && atTop) {{
+          nextAnchor = getAdjacentMatchAnchor(getActiveMatchAnchorFromViewport(), -1);
+        }}
+        if (!nextAnchor) {{
+          return;
+        }}
+        event.preventDefault();
+        activateMatchAnchor(nextAnchor, {{ preserveTab: true, scrollDetails: false, resetFlowScroll: true }});
+      }}, {{ passive: false }});
+    }}
+
     function scrollDetailsToAnchor(anchorId = '') {{
       if (!anchorId) {{
         return;
@@ -1401,21 +1464,30 @@ def render_html(report: dict[str, Any]) -> str:
             return;
           }}
           event.preventDefault();
-          if (window.location.hash !== `#${{targetId}}`) {{
-            window.history.replaceState(null, '', `#${{targetId}}`);
-          }}
           const resolvedMatchAnchor = resolveMatchAnchor(targetId);
           if (resolvedMatchAnchor) {{
-            updateActiveNavLinks(resolvedMatchAnchor);
-            setActiveFlowView(resolvedMatchAnchor);
+            activateMatchAnchor(resolvedMatchAnchor, {{
+              preserveTab: true,
+              scrollDetails: activeContentTab === 'details',
+              resetFlowScroll: true,
+            }});
           }} else {{
+            if (window.location.hash !== `#${{targetId}}`) {{
+              window.history.replaceState(null, '', `#${{targetId}}`);
+            }}
             updateActiveNavLinks(targetId);
+            if (activeContentTab === 'details') {{
+              window.requestAnimationFrame(() => {{
+                scrollDetailsToAnchor(targetId);
+                syncActivePanels();
+              }});
+            }} else {{
+              const firstMatchAnchor = resolveMatchAnchor(targetId);
+              if (firstMatchAnchor) {{
+                activateMatchAnchor(firstMatchAnchor, {{ preserveTab: true, scrollDetails: false, resetFlowScroll: true }});
+              }}
+            }}
           }}
-          setActiveContentTab('details');
-          window.requestAnimationFrame(() => {{
-            scrollDetailsToAnchor(targetId);
-            syncActivePanels();
-          }});
         }});
       }});
     }}
@@ -1474,6 +1546,10 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     function getActiveMatchAnchorFromViewport() {{
+      if (activeContentTab === 'flow') {{
+        const flowStage = document.getElementById('flow-stage');
+        return flowStage ? flowStage.getAttribute('data-active-match-anchor') || '' : '';
+      }}
       const detailPanelBody = document.getElementById('details-panel-body');
       if (!detailPanelBody || detailPanelBody.closest('[hidden]')) {{
         const flowStage = document.getElementById('flow-stage');
@@ -1508,7 +1584,7 @@ def render_html(report: dict[str, Any]) -> str:
       return firstNestedMatch ? firstNestedMatch.id : '';
     }}
 
-    function setActiveFlowView(anchorId = '') {{
+    function setActiveFlowView(anchorId = '', resetScroll = true) {{
       const resolvedAnchorId = resolveMatchAnchor(anchorId) || getActiveMatchAnchorFromViewport();
       const flowStage = document.getElementById('flow-stage');
       const flowStageBody = document.getElementById('flow-stage-body');
@@ -1524,7 +1600,7 @@ def render_html(report: dict[str, Any]) -> str:
           view.setAttribute('hidden', '');
         }}
       }});
-      if (flowStageBody) {{
+      if (flowStageBody && resetScroll) {{
         flowStageBody.scrollTop = 0;
       }}
       closeOpenFlowTooltips();
@@ -1548,6 +1624,7 @@ def render_html(report: dict[str, Any]) -> str:
       bindFlowNodeEvents();
       bindContentTabs();
       bindNavLinkBehavior();
+      bindFlowStageNavigation();
       const initialAnchor = resolveMatchAnchor(window.location.hash ? window.location.hash.slice(1) : '') || getActiveMatchAnchorFromViewport();
       setActiveContentTab(detailFieldVisibility.flow_diagram !== false ? 'flow' : 'details');
       updateActiveNavLinks(initialAnchor);
@@ -1569,7 +1646,19 @@ def render_html(report: dict[str, Any]) -> str:
       }});
     }}
 
-    window.addEventListener('hashchange', syncActivePanels);
+    window.addEventListener('hashchange', () => {{
+      const hashAnchor = window.location.hash ? window.location.hash.slice(1) : '';
+      const resolvedMatchAnchor = resolveMatchAnchor(hashAnchor);
+      if (resolvedMatchAnchor) {{
+        activateMatchAnchor(resolvedMatchAnchor, {{
+          preserveTab: true,
+          scrollDetails: activeContentTab === 'details',
+          resetFlowScroll: true,
+        }});
+      }} else {{
+        syncActivePanels();
+      }}
+    }});
     window.addEventListener('resize', syncActivePanels);
     window.addEventListener('DOMContentLoaded', initializePage);
   </script>
@@ -1678,7 +1767,6 @@ def _render_flow_stage(flow_views_html: str, active_flow_anchor: str) -> str:
     <section id="flow-stage" class="flow-stage" data-active-match-anchor="{escape(active_flow_anchor)}">
       <section class="flow-stage-shell">
         <div class="flow-stage-header">
-          <h2>当前调用流程</h2>
           <div class="flow-stage-subtitle">滚动查看完整流程图，随当前进入视口的调用自动切换。</div>
         </div>
         <div id="flow-stage-body" class="flow-stage-body">
