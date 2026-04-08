@@ -54,6 +54,10 @@ def render_html(report: dict[str, Any]) -> str:
       --danger-bg: #fff0f0;
       --danger-border: #ef9a9a;
       --danger-fg: #b42318;
+      --reject-bg: #fff4d6;
+      --reject-fg: #9a6700;
+      --follow-bg: #e8f2ff;
+      --follow-fg: #175cd3;
     }}
     body {{
       margin: 0;
@@ -119,6 +123,16 @@ def render_html(report: dict[str, Any]) -> str:
       color: #7a4a00;
       background: #fff6db;
       border-color: #f1c24b;
+    }}
+    .summary-chip-reject {{
+      color: var(--reject-fg);
+      background: var(--reject-bg);
+      border-color: #f3c969;
+    }}
+    .summary-chip-follow-up {{
+      color: var(--follow-fg);
+      background: var(--follow-bg);
+      border-color: #a9c4f6;
     }}
     .summary-reasons {{
       margin-top: 10px;
@@ -221,6 +235,14 @@ def render_html(report: dict[str, Any]) -> str:
       color: #66758c;
       background: #edf1f7;
     }}
+    .nav-status-reject {{
+      color: var(--reject-fg);
+      background: var(--reject-bg);
+    }}
+    .nav-status-follow-up {{
+      color: var(--follow-fg);
+      background: var(--follow-bg);
+    }}
     .nav-retry-badge {{
       position: absolute;
       top: -6px;
@@ -301,6 +323,16 @@ def render_html(report: dict[str, Any]) -> str:
       color: #516074;
       background: #edf1f7;
       border-color: #cbd5e1;
+    }}
+    .status-chip-reject {{
+      color: var(--reject-fg);
+      background: var(--reject-bg);
+      border-color: #f3c969;
+    }}
+    .status-chip-follow-up {{
+      color: var(--follow-fg);
+      background: var(--follow-bg);
+      border-color: #a9c4f6;
     }}
     .collapsible {{
       margin-top: 18px;
@@ -693,6 +725,8 @@ def _collect_summary_stats(question_groups: list[dict[str, Any]]) -> dict[str, A
     success_count = 0
     failed_count = 0
     unknown_count = 0
+    reject_count = 0
+    follow_up_count = 0
     failed_retry_count = 0
     retry_reason_counts: Counter[str] = Counter()
 
@@ -703,6 +737,10 @@ def _collect_summary_stats(question_groups: list[dict[str, Any]]) -> dict[str, A
                 success_count += 1
             elif flow_status == "failed":
                 failed_count += 1
+            elif flow_status == "reject":
+                reject_count += 1
+            elif flow_status == "follow_up":
+                follow_up_count += 1
             else:
                 unknown_count += 1
 
@@ -719,6 +757,8 @@ def _collect_summary_stats(question_groups: list[dict[str, Any]]) -> dict[str, A
         "success_count": success_count,
         "failed_count": failed_count,
         "unknown_count": unknown_count,
+        "reject_count": reject_count,
+        "follow_up_count": follow_up_count,
         "failed_retry_count": failed_retry_count,
         "retry_reason_counts": retry_reason_counts,
     }
@@ -730,6 +770,8 @@ def _render_summary_metrics(summary_stats: dict[str, Any]) -> str:
       <span class="summary-chip summary-chip-success">成功问题数：{summary_stats["success_count"]}</span>
       <span class="summary-chip summary-chip-failed">失败问题数：{summary_stats["failed_count"]}</span>
       <span class="summary-chip summary-chip-unknown">未知问题数：{summary_stats["unknown_count"]}</span>
+      <span class="summary-chip summary-chip-reject">拒答问题数：{summary_stats["reject_count"]}</span>
+      <span class="summary-chip summary-chip-follow-up">追问问题数：{summary_stats["follow_up_count"]}</span>
       <span class="summary-chip summary-chip-retry">失败重试次数：{summary_stats["failed_retry_count"]}</span>
     </section>
     """
@@ -777,16 +819,60 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
     associated_threads_meta = ""
     if associated_threads:
         associated_threads_meta = f'<div class="meta">关联线程：{escape(", ".join(associated_threads))}</div>'
+    skipped_sections = set(match.get("skipped_sections", []))
+    preprocess_knowledge = match.get("preprocess_knowledge", {})
+    preprocess_rewrite_knowledge = _format_knowledge_bundle(preprocess_knowledge.get("intention_rewrite"))
+    sql_generation_knowledge = _format_knowledge_bundle(match.get("sql_generation_knowledge"))
+    few_shot_knowledge = _format_knowledge_bundle(match.get("few_shot_knowledge"))
     sections = [
         _render_status_summary(match),
         _render_highlight_list_section("重试记录", match["verifier_failures"], "retry-block"),
     ]
     sections.extend([
         _render_text_section("命中锚点日志", match["anchor_line"]),
-        _render_collapsible_list_section("RAG 检索结果", match["rag_results"]),
-        _render_text_section("问题改写", match["rewritten_question"]),
-        _render_list_section("表检索结果", match["recalled_tables"]),
-        _render_collapsible_text_section("IR 表定义", match["ir_table_definition"]),
+        _render_text_section("AC 补充问题", match.get("ac_enriched_question", "")),
+        _render_text_section("预处理改写", match.get("preprocess_rewritten_question", "")),
+        _render_text_section("预处理知识检索", preprocess_rewrite_knowledge),
+        _render_list_section("拒答知识", preprocess_knowledge.get("reject", [])),
+        _render_list_section("追问知识", preprocess_knowledge.get("follow_up", [])),
+        _render_collapsible_text_section(
+            "标准化问题",
+            match.get("mask_question", ""),
+            skipped="mask_question" in skipped_sections,
+        ),
+        _render_text_section(
+            "SQL 知识检索",
+            sql_generation_knowledge,
+            skipped="sql_generation_knowledge" in skipped_sections,
+        ),
+        _render_text_section(
+            "Few Shot 检索",
+            few_shot_knowledge,
+            skipped="few_shot_knowledge" in skipped_sections,
+        ),
+        _render_sql_rewrite_section(
+            "问题改写",
+            match.get("sql_rewritten_question", "") or match.get("rewritten_question", ""),
+            f"sql-rewrite-{anchor_id}",
+            match.get("sql_rewrite_prompt_raw", ""),
+            match.get("sql_rewrite_prompt_json", ""),
+            skipped="sql_rewritten_question" in skipped_sections,
+        ),
+        _render_collapsible_list_section(
+            "RAG 检索结果",
+            match["rag_results"],
+            skipped="rag_results" in skipped_sections,
+        ),
+        _render_list_section(
+            "表检索结果",
+            match["recalled_tables"],
+            skipped="recalled_tables" in skipped_sections,
+        ),
+        _render_collapsible_text_section(
+            "IR 表定义",
+            match["ir_table_definition"],
+            skipped="ir_table_definition" in skipped_sections,
+        ),
         _render_collapsible_prompt_execution_section(
             "最终 Prompt",
             match["final_prompt"].get("combined") or match["final_prompt"].get("raw", ""),
@@ -794,14 +880,20 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
             match_id=match["match_id"],
             executable=bool(match["final_prompt"].get("system") and match["final_prompt"].get("user")),
             prompt=match["final_prompt"],
+            skipped="final_prompt" in skipped_sections,
         ),
-        _render_collapsible_text_section("生成 IR 结果", match["generated_ir"]),
+        _render_collapsible_text_section(
+            "生成 IR 结果",
+            match["generated_ir"],
+            skipped="generated_ir" in skipped_sections,
+        ),
         _render_copyable_text_section(
             "完整 IR",
             match["complete_ir"],
             f"complete-ir-{anchor_id}",
             show_execute=True,
             match_id=match["match_id"],
+            skipped="complete_ir" in skipped_sections,
         ),
     ])
 
@@ -826,6 +918,12 @@ def _render_nav_match_link(anchor_id: str, match: dict[str, Any]) -> str:
     elif status == "failed":
         icon = "✗"
         status_class = "nav-status-failed"
+    elif status == "reject":
+        icon = "⊘"
+        status_class = "nav-status-reject"
+    elif status == "follow_up":
+        icon = "↺"
+        status_class = "nav-status-follow-up"
     else:
         icon = "?"
         status_class = "nav-status-unknown"
@@ -848,23 +946,49 @@ def _render_status_summary(match: dict[str, Any]) -> str:
     elif flow_status == "failed":
         flow_label = "失败"
         status_class = "status-chip-failed"
+    elif flow_status == "reject":
+        flow_label = "拒答"
+        status_class = "status-chip-reject"
+    elif flow_status == "follow_up":
+        flow_label = "追问"
+        status_class = "status-chip-follow-up"
     else:
         flow_label = "未知"
         status_class = "status-chip-unknown"
+    preprocess_decision = match.get("preprocess_decision", "")
+    preprocess_label = ""
+    if preprocess_decision == "data_query":
+        preprocess_label = "DataQuery"
+    elif preprocess_decision == "reject_request":
+        preprocess_label = "RejectRequest"
+    elif preprocess_decision == "ask_human":
+        preprocess_label = "AskHuman"
+    preprocess_chip = (
+        f'<span class="status-chip">预处理判定：{escape(preprocess_label)}</span>'
+        if preprocess_label
+        else ""
+    )
     return f"""
     <section class="status-summary">
       <span class="status-chip {status_class}">流程状态：{flow_label}</span>
+      {preprocess_chip}
       <span class="status-chip">重试次数：{match.get("retry_count", 0)}</span>
     </section>
     """
 
 
-def _render_text_section(title: str, content: str) -> str:
+def _render_placeholder(skipped: bool = False) -> str:
+    if skipped:
+        return '<div class="missing">未执行（流程在预处理终止）</div>'
+    return '<div class="missing">未命中该字段</div>'
+
+
+def _render_text_section(title: str, content: str, skipped: bool = False) -> str:
     if not content:
         return f"""
         <section class="section">
           <h3>{escape(title)}</h3>
-          <div class="missing">未命中该字段</div>
+          {_render_placeholder(skipped)}
         </section>
         """
     return f"""
@@ -875,9 +999,9 @@ def _render_text_section(title: str, content: str) -> str:
     """
 
 
-def _render_collapsible_text_section(title: str, content: str) -> str:
+def _render_collapsible_text_section(title: str, content: str, skipped: bool = False) -> str:
     if not content:
-        return _render_text_section(title, content)
+        return _render_text_section(title, content, skipped=skipped)
     return f"""
     <details class="section collapsible">
       <summary>{escape(title)}</summary>
@@ -894,9 +1018,10 @@ def _render_copyable_text_section(
     target_id: str,
     show_execute: bool = False,
     match_id: str | None = None,
+    skipped: bool = False,
 ) -> str:
     if not content:
-        return _render_text_section(title, content)
+        return _render_text_section(title, content, skipped=skipped)
     execute_button = ""
     if show_execute:
         execute_button = (
@@ -925,9 +1050,14 @@ def _render_copyable_text_section(
     """
 
 
-def _render_collapsible_copyable_text_section(title: str, content: str, target_id: str) -> str:
+def _render_collapsible_copyable_text_section(
+    title: str,
+    content: str,
+    target_id: str,
+    skipped: bool = False,
+) -> str:
     if not content:
-        return _render_text_section(title, content)
+        return _render_text_section(title, content, skipped=skipped)
     return f"""
     <details class="section collapsible">
       <summary>{escape(title)}</summary>
@@ -952,9 +1082,10 @@ def _render_collapsible_prompt_execution_section(
     match_id: str,
     executable: bool,
     prompt: dict[str, str] | None = None,
+    skipped: bool = False,
 ) -> str:
     if not content:
-        return _render_text_section(title, content)
+        return _render_text_section(title, content, skipped=skipped)
     prompt_messages_json = _build_prompt_messages_json(prompt or {})
     json_copy_button = ""
     json_copy_payload = ""
@@ -995,6 +1126,49 @@ def _render_collapsible_prompt_execution_section(
     """
 
 
+def _render_sql_rewrite_section(
+    title: str,
+    rewritten_question: str,
+    target_id: str,
+    prompt_raw: str,
+    prompt_json: str,
+    skipped: bool = False,
+) -> str:
+    display_content = rewritten_question or prompt_json or prompt_raw
+    if not display_content:
+        return _render_text_section(title, "", skipped=skipped)
+    prompt_button = ""
+    prompt_payload = ""
+    if prompt_json:
+        prompt_button = (
+            f'<button type="button" class="copy-btn copy-json-btn" '
+            f'data-copy-target="{escape(target_id)}-prompt-json" '
+            f'onclick="copySection(this)" title="复制提示词 JSON">Prompt</button>'
+        )
+        prompt_payload = f'<pre id="{escape(target_id)}-prompt-json" hidden>{escape(prompt_json)}</pre>'
+    question_button = ""
+    if rewritten_question:
+        question_button = (
+            f'<button type="button" class="copy-btn copy-json-btn" '
+            f'data-copy-target="{escape(target_id)}" '
+            f'onclick="copySection(this)" title="复制改写问题">问题</button>'
+        )
+    return f"""
+    <section class="section">
+      <div class="section-header">
+        <h3>{escape(title)}</h3>
+        <div class="copy-actions">
+          {prompt_button}
+          {question_button}
+          <span class="copy-feedback" aria-live="polite">已复制</span>
+        </div>
+      </div>
+      <pre id="{escape(target_id)}">{escape(display_content)}</pre>
+      {prompt_payload}
+    </section>
+    """
+
+
 def _build_prompt_messages_json(prompt: dict[str, str]) -> str:
     system = prompt.get("system", "")
     user = prompt.get("user", "")
@@ -1009,12 +1183,17 @@ def _build_prompt_messages_json(prompt: dict[str, str]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def _render_list_section(title: str, items: list[str], kind: str | None = None) -> str:
+def _render_list_section(
+    title: str,
+    items: list[str],
+    kind: str | None = None,
+    skipped: bool = False,
+) -> str:
     if not items:
         return f"""
         <section class="section">
           <h3>{escape(title)}</h3>
-          <div class="missing">未命中该字段</div>
+          {_render_placeholder(skipped)}
         </section>
         """
     class_name = kind or "list"
@@ -1040,9 +1219,14 @@ def _render_highlight_list_section(title: str, items: list[str], block_class: st
     """
 
 
-def _render_collapsible_list_section(title: str, items: list[str], kind: str | None = None) -> str:
+def _render_collapsible_list_section(
+    title: str,
+    items: list[str],
+    kind: str | None = None,
+    skipped: bool = False,
+) -> str:
     if not items:
-        return _render_list_section(title, items, kind)
+        return _render_list_section(title, items, kind, skipped=skipped)
     class_name = kind or "list"
     rendered_items = "".join(f"<li>{escape(item)}</li>" for item in items)
     return f"""
@@ -1053,3 +1237,20 @@ def _render_collapsible_list_section(title: str, items: list[str], kind: str | N
       </div>
     </details>
     """
+
+
+def _format_knowledge_bundle(bundle: dict[str, Any] | None) -> str:
+    if not isinstance(bundle, dict):
+        return ""
+    lines = []
+    mappings = [
+        ("global_request", "全局请求"),
+        ("global_result", "全局结果"),
+        ("scope_request", "作用域请求"),
+        ("scope_result", "作用域结果"),
+    ]
+    for key, label in mappings:
+        value = str(bundle.get(key, "")).strip()
+        if value:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines)

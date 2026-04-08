@@ -29,6 +29,26 @@ MASK_QUESTION_KEYWORD = "MASK QUESTION:"
 VERIFIER_FAIL_KEYWORD = "verifier result: 0:"
 FLOW_FAIL_KEYWORD = "sql_flow exception: SQL is empty"
 FLOW_SUCCESS_KEYWORD = "sqlflow res: sql:"
+AC_QUESTION_KEYWORD = "question after ac: "
+PREPROCESS_DECISION_KEYWORD = "react chat llm chient res"
+QUERY_INTENT_RE = re.compile(r'"query_intent"\s*:\s*"(?P<query>.*?)"')
+KNOWLEDGE_REQUEST_KEYWORD = "knowledge retriever:"
+INTENTION_REWRITE_SCOPE = "IntentionRewrite"
+SQL_GENERATION_SCOPE = "SQLGeneration"
+FEW_SHOT_SCOPE = "SQLGenFewShot"
+REJECT_KNOWLEDGE_KEYWORD = "load klg for KlgScope.INTENTION_REJECT: "
+FOLLOW_UP_KNOWLEDGE_KEYWORD = "load klg for KlgScope.INTENTION_FOLLOW_UP: "
+SQL_REWRITE_PROMPT_KEYWORD = "问题改写任务："
+
+DATA_QUERY_DECISION = "data_query"
+REJECT_REQUEST_DECISION = "reject_request"
+ASK_HUMAN_DECISION = "ask_human"
+
+SUCCESS_STATUS = "success"
+FAILED_STATUS = "failed"
+UNKNOWN_STATUS = "unknown"
+REJECT_STATUS = "reject"
+FOLLOW_UP_STATUS = "follow_up"
 
 
 def read_log_text(log_path: str | Path, encoding: str | None = None) -> str:
@@ -57,20 +77,22 @@ def extract_report(
     question_filter: str | None = None,
 ) -> dict[str, Any]:
     lines = log_text.splitlines()
+    anchors = _collect_anchor_entries(lines)
     cross_thread_matches = _collect_cross_thread_matches(lines)
-    if cross_thread_matches:
-        selected_questions = _select_match_questions(cross_thread_matches, question_filter)
-        question_groups = [
-            _build_question_group_from_matches(question=question, matches=cross_thread_matches)
-            for question in selected_questions
-        ]
-    else:
-        anchors = _collect_anchor_entries(lines)
-        selected_questions = _select_questions(anchors, question_filter)
-        question_groups = [
-            _build_question_group(question=question, anchors=anchors, lines=lines)
-            for question in selected_questions
-        ]
+    cross_thread_match_ids = {match["match_id"] for match in cross_thread_matches}
+    fallback_matches = [
+        _build_match(0, anchor, lines)
+        for anchor in anchors
+        if anchor["match_id"] not in cross_thread_match_ids
+        and not any(_anchor_is_covered_by_cross_thread_match(anchor, match) for match in cross_thread_matches)
+    ]
+    all_matches = [*cross_thread_matches, *fallback_matches]
+    all_matches.sort(key=lambda match: (int(match.get("line_number", 0)), str(match.get("thread_id", ""))))
+    selected_questions = _select_match_questions(all_matches, question_filter)
+    question_groups = [
+        _build_question_group_from_matches(question=question, matches=all_matches)
+        for question in selected_questions
+    ]
     report = {
         "tool": "chatbi-smart-query-log-extractor",
         "version": __version__,
@@ -334,7 +356,7 @@ def _build_question_group_from_matches(question: str, matches: list[dict[str, An
     grouped_matches = [match for match in matches if match["question"] == question]
     normalized_matches = []
     for index, match in enumerate(grouped_matches, start=1):
-        normalized_match = dict(match)
+        normalized_match = {key: value for key, value in match.items() if not key.startswith("_")}
         normalized_match["index"] = index
         normalized_matches.append(normalized_match)
     return {
@@ -403,35 +425,227 @@ def _build_question_group(question: str, anchors: list[dict[str, Any]], lines: l
     }
 
 
+def _build_window_log_entries(lines: list[str], thread_id: str, start_line_number: int) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for offset, line in enumerate(lines):
+        if not _line_has_thread_id(line, thread_id):
+            continue
+        entries.append(
+            {
+                "line_number": start_line_number + offset,
+                "thread_id": thread_id,
+                "line": line,
+            }
+        )
+    return entries
+
+
+def _anchor_is_covered_by_cross_thread_match(anchor: dict[str, Any], match: dict[str, Any]) -> bool:
+    segments = match.get("_segments", {})
+    thread_segments = segments.get(anchor["thread_id"], [])
+    for segment in thread_segments:
+        start_line_number = int(segment.get("start_line_number", 0))
+        end_line_number = int(segment.get("end_line_number") or 0)
+        if start_line_number <= int(anchor["line_number"]) < end_line_number:
+            return True
+    return False
+
+
+def _default_knowledge_bundle(scope: str) -> dict[str, str]:
+    return {
+        "scope": scope,
+        "global_request": "",
+        "global_result": "",
+        "scope_request": "",
+        "scope_result": "",
+    }
+
+
+def _extract_line_value(entries: list[dict[str, Any]], keyword: str) -> str:
+    value = ""
+    for entry in entries:
+        line = entry["line"]
+        if keyword in line:
+            value = _extract_after_keyword(line, keyword)
+    return value
+
+
+def _extract_last_mask_question(entries: list[dict[str, Any]]) -> str:
+    return _extract_line_value(entries, MASK_QUESTION_KEYWORD)
+
+
+def _extract_preprocess_decision(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    decision = ""
+    raw_line = ""
+    rewritten_question = ""
+    for entry in entries:
+        line = entry["line"]
+        if PREPROCESS_DECISION_KEYWORD not in line:
+            continue
+        raw_line = line
+        if "RejectRequest" in line:
+            decision = REJECT_REQUEST_DECISION
+        elif "AskHuman" in line:
+            decision = ASK_HUMAN_DECISION
+        elif "DataQuery" in line:
+            decision = DATA_QUERY_DECISION
+        query_match = QUERY_INTENT_RE.search(line)
+        if query_match:
+            rewritten_question = query_match.group("query").strip()
+    return {
+        "decision": decision,
+        "raw_line": raw_line,
+        "rewritten_question": rewritten_question,
+    }
+
+
+def _extract_last_knowledge_sequence(entries: list[dict[str, Any]], scope_keyword: str) -> dict[str, str]:
+    bundle = _default_knowledge_bundle(scope_keyword)
+    thread_entries: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        thread_entries.setdefault(entry["thread_id"], []).append(entry)
+
+    best_candidate: tuple[int, dict[str, str]] | None = None
+    for scoped_entries in thread_entries.values():
+        for index in range(len(scoped_entries) - 3):
+            first = scoped_entries[index]["line"]
+            second = scoped_entries[index + 1]["line"]
+            third = scoped_entries[index + 2]["line"]
+            fourth = scoped_entries[index + 3]["line"]
+            if KNOWLEDGE_REQUEST_KEYWORD not in first or "Global" not in first:
+                continue
+            if RAG_KEYWORD not in second:
+                continue
+            if KNOWLEDGE_REQUEST_KEYWORD not in third or scope_keyword not in third:
+                continue
+            if RAG_KEYWORD not in fourth:
+                continue
+            candidate = {
+                "scope": scope_keyword,
+                "global_request": _extract_after_keyword(first, KNOWLEDGE_REQUEST_KEYWORD),
+                "global_result": _extract_after_keyword(second, RAG_KEYWORD),
+                "scope_request": _extract_after_keyword(third, KNOWLEDGE_REQUEST_KEYWORD),
+                "scope_result": _extract_after_keyword(fourth, RAG_KEYWORD),
+            }
+            candidate_end_line = scoped_entries[index + 3]["line_number"]
+            best_candidate = (candidate_end_line, candidate)
+    return best_candidate[1] if best_candidate is not None else bundle
+
+
+def _extract_matching_lines(entries: list[dict[str, Any]], keyword: str) -> list[str]:
+    results: list[str] = []
+    for entry in entries:
+        line = entry["line"]
+        if keyword in line:
+            value = _extract_after_keyword(line, keyword)
+            if value:
+                results.append(value)
+    return results
+
+
+def _extract_sql_rewrite(entries: list[dict[str, Any]]) -> tuple[str, str, str, list[str]]:
+    raw_prompt = ""
+    rewritten_question = ""
+    errors: list[str] = []
+
+    for entry in entries:
+        line = entry["line"]
+        if SQL_REWRITE_PROMPT_KEYWORD in line:
+            raw_prompt = _extract_after_keyword(line, SQL_REWRITE_PROMPT_KEYWORD)
+        if REWRITE_KEYWORD in line:
+            rewritten_question = _extract_sql_rewritten_question(line)
+
+    prompt_json = ""
+    if raw_prompt:
+        try:
+            payload = _load_prompt_payload(raw_prompt)
+            prompt_json = json.dumps(payload, ensure_ascii=False, indent=2)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            errors.append(f"sql_rewrite_prompt: failed to parse payload ({exc})")
+
+    return raw_prompt, prompt_json, rewritten_question, errors
+
+
+def _extract_sql_rewritten_question(line: str) -> str:
+    content = _extract_after_keyword(line, REWRITE_KEYWORD)
+    if " to " in content:
+        return content.split(" to ", 1)[1].strip()
+    return _extract_after_last_bracket(line)
+
+
+def _resolve_flow_status(
+    has_failed: bool,
+    has_succeeded: bool,
+    preprocess_decision: str,
+) -> str:
+    if has_failed:
+        return FAILED_STATUS
+    if has_succeeded:
+        return SUCCESS_STATUS
+    if preprocess_decision == REJECT_REQUEST_DECISION:
+        return REJECT_STATUS
+    if preprocess_decision == ASK_HUMAN_DECISION:
+        return FOLLOW_UP_STATUS
+    return UNKNOWN_STATUS
+
+
+def _build_skipped_sections(terminated_at_preprocess: bool) -> list[str]:
+    if not terminated_at_preprocess:
+        return []
+    return [
+        "mask_question",
+        "sql_generation_knowledge",
+        "few_shot_knowledge",
+        "sql_rewrite_prompt",
+        "sql_rewritten_question",
+        "rag_results",
+        "recalled_tables",
+        "ir_table_definition",
+        "final_prompt",
+        "generated_ir",
+        "complete_ir",
+    ]
+
+
+def _is_skipped(skipped_sections: list[str], section_name: str) -> bool:
+    return section_name in skipped_sections
+
+
 def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[str, Any]:
     thread_id = anchor["thread_id"]
     match_id = anchor["match_id"]
     window_lines = lines[anchor["line_number"] - 1 : anchor["window_end_line_number"] - 1]
-    verifier_failures = [
-        _extract_after_keyword(line, VERIFIER_FAIL_KEYWORD)
-        for line in window_lines
-        if _line_has_thread_id(line, thread_id) and VERIFIER_FAIL_KEYWORD in line
-    ]
-    has_failed = any(_line_has_thread_id(line, thread_id) and FLOW_FAIL_KEYWORD in line for line in window_lines)
-    has_succeeded = any(
-        _line_has_thread_id(line, thread_id) and FLOW_SUCCESS_KEYWORD in line for line in window_lines
-    )
-    flow_status = "failed" if has_failed else "success" if has_succeeded else "unknown"
-    rag_results = [
-        line.strip()
-        for line in window_lines
-        if _line_has_thread_id(line, thread_id) and RAG_KEYWORD in line
-    ]
+    log_entries = _build_window_log_entries(window_lines, thread_id, anchor["line_number"])
+    preprocess_entries = list(log_entries)
 
-    rewritten_question = ""
-    for line in window_lines:
-        if _line_has_thread_id(line, thread_id) and REWRITE_KEYWORD in line:
-            rewritten_question = _extract_after_last_bracket(line)
+    preprocess_info = _extract_preprocess_decision(preprocess_entries)
+    preprocess_decision = preprocess_info["decision"]
+    terminated_at_preprocess = preprocess_decision in {REJECT_REQUEST_DECISION, ASK_HUMAN_DECISION}
+    skipped_sections = _build_skipped_sections(terminated_at_preprocess)
+    ac_enriched_question = _extract_line_value(preprocess_entries, AC_QUESTION_KEYWORD)
+    preprocess_knowledge = {
+        "intention_rewrite": _extract_last_knowledge_sequence(preprocess_entries, INTENTION_REWRITE_SCOPE),
+        "reject": _extract_matching_lines(preprocess_entries, REJECT_KNOWLEDGE_KEYWORD),
+        "follow_up": _extract_matching_lines(preprocess_entries, FOLLOW_UP_KNOWLEDGE_KEYWORD),
+    }
+
+    verifier_failures = [
+        _extract_after_keyword(entry["line"], VERIFIER_FAIL_KEYWORD)
+        for entry in log_entries
+        if VERIFIER_FAIL_KEYWORD in entry["line"]
+    ]
+    has_failed = any(FLOW_FAIL_KEYWORD in entry["line"] for entry in log_entries)
+    has_succeeded = any(FLOW_SUCCESS_KEYWORD in entry["line"] for entry in log_entries)
+    flow_status = _resolve_flow_status(has_failed, has_succeeded, preprocess_decision)
+    rag_results = [
+        entry["line"].strip()
+        for entry in log_entries
+        if RAG_KEYWORD in entry["line"]
+    ]
 
     recalled_tables: list[str] = []
-    for line in window_lines:
-        if not _line_has_thread_id(line, thread_id):
-            continue
+    for entry in log_entries:
+        line = entry["line"]
         if RECALL_KEYWORD in line:
             recalled_tables.append(line.split("召回表:", 1)[-1].strip())
         elif SCHEMA_KEYWORD in line:
@@ -460,27 +674,51 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         ir_def_errors=ir_def_errors,
         generated_ir_errors=generated_ir_errors,
     )
+    mask_question = "" if terminated_at_preprocess else _extract_last_mask_question(log_entries)
+    sql_generation_knowledge = (
+        _default_knowledge_bundle(SQL_GENERATION_SCOPE)
+        if terminated_at_preprocess
+        else _extract_last_knowledge_sequence(log_entries, SQL_GENERATION_SCOPE)
+    )
+    few_shot_knowledge = (
+        _default_knowledge_bundle(FEW_SHOT_SCOPE)
+        if terminated_at_preprocess
+        else _extract_last_knowledge_sequence(log_entries, FEW_SHOT_SCOPE)
+    )
+    sql_rewrite_prompt_raw, sql_rewrite_prompt_json, sql_rewritten_question, sql_rewrite_errors = (
+        ("", "", "", [])
+        if terminated_at_preprocess
+        else _extract_sql_rewrite(log_entries)
+    )
+    rewritten_question = sql_rewritten_question
 
     missing_sections: list[str] = []
-    if not rag_results:
+    if not _is_skipped(skipped_sections, "rag_results") and not rag_results:
         missing_sections.append("rag_results")
-    if not rewritten_question:
+    if not _is_skipped(skipped_sections, "sql_rewritten_question") and not rewritten_question:
         missing_sections.append("rewritten_question")
-    if not recalled_tables:
+    if not _is_skipped(skipped_sections, "recalled_tables") and not recalled_tables:
         missing_sections.append("recalled_tables")
-    if not ir_table_definition:
+    if not _is_skipped(skipped_sections, "ir_table_definition") and not ir_table_definition:
         missing_sections.append("ir_table_definition")
-    if not final_prompt["raw"] and not final_prompt["combined"]:
+    if not _is_skipped(skipped_sections, "final_prompt") and not final_prompt["raw"] and not final_prompt["combined"]:
         missing_sections.append("final_prompt")
-    if not generated_ir:
+    if not _is_skipped(skipped_sections, "generated_ir") and not generated_ir:
         missing_sections.append("generated_ir")
-    if not complete_ir:
+    if not _is_skipped(skipped_sections, "complete_ir") and not complete_ir:
         missing_sections.append("complete_ir")
 
-    parse_errors = [*ir_def_errors, *final_prompt_errors, *generated_ir_errors, *complete_ir_errors]
+    parse_errors = [
+        *ir_def_errors,
+        *final_prompt_errors,
+        *generated_ir_errors,
+        *complete_ir_errors,
+        *sql_rewrite_errors,
+    ]
 
     return {
         "index": index,
+        "question": anchor["question"],
         "thread_id": thread_id,
         "match_id": match_id,
         "anchor_timestamp": anchor["anchor_timestamp"],
@@ -488,14 +726,26 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "line_number": anchor["line_number"],
         "associated_thread_ids": [],
         "rewrite_questions": [],
+        "ac_enriched_question": ac_enriched_question,
+        "preprocess_rewritten_question": preprocess_info["rewritten_question"],
+        "preprocess_decision": preprocess_decision,
+        "preprocess_knowledge": preprocess_knowledge,
+        "mask_question": mask_question,
+        "sql_generation_knowledge": sql_generation_knowledge,
+        "few_shot_knowledge": few_shot_knowledge,
+        "sql_rewrite_prompt_raw": sql_rewrite_prompt_raw,
+        "sql_rewrite_prompt_json": sql_rewrite_prompt_json,
         "rag_results": rag_results,
         "rewritten_question": rewritten_question,
+        "sql_rewritten_question": sql_rewritten_question,
         "recalled_tables": recalled_tables,
         "ir_table_definition": ir_table_definition,
         "final_prompt": final_prompt,
         "generated_ir": generated_ir,
         "complete_ir": complete_ir,
         "flow_status": flow_status,
+        "terminated_at_preprocess": terminated_at_preprocess,
+        "skipped_sections": skipped_sections,
         "retry_count": len(verifier_failures),
         "verifier_failures": verifier_failures,
         "missing_sections": missing_sections,
@@ -506,6 +756,17 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
 def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list[str]) -> dict[str, Any]:
     segment_views = _build_segment_views(raw_match, lines)
     log_entries = _collect_segment_log_entries(segment_views)
+    root_entries = [entry for entry in log_entries if entry["thread_id"] == raw_match["thread_id"]]
+    preprocess_info = _extract_preprocess_decision(root_entries)
+    preprocess_decision = preprocess_info["decision"]
+    terminated_at_preprocess = preprocess_decision in {REJECT_REQUEST_DECISION, ASK_HUMAN_DECISION}
+    skipped_sections = _build_skipped_sections(terminated_at_preprocess)
+    ac_enriched_question = _extract_line_value(root_entries, AC_QUESTION_KEYWORD)
+    preprocess_knowledge = {
+        "intention_rewrite": _extract_last_knowledge_sequence(root_entries, INTENTION_REWRITE_SCOPE),
+        "reject": _extract_matching_lines(root_entries, REJECT_KNOWLEDGE_KEYWORD),
+        "follow_up": _extract_matching_lines(root_entries, FOLLOW_UP_KNOWLEDGE_KEYWORD),
+    }
     verifier_failures = [
         _extract_after_keyword(entry["line"], VERIFIER_FAIL_KEYWORD)
         for entry in log_entries
@@ -513,7 +774,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
     ]
     has_failed = any(FLOW_FAIL_KEYWORD in entry["line"] for entry in log_entries)
     has_succeeded = any(FLOW_SUCCESS_KEYWORD in entry["line"] for entry in log_entries)
-    flow_status = "failed" if has_failed else "success" if has_succeeded else "unknown"
+    flow_status = _resolve_flow_status(has_failed, has_succeeded, preprocess_decision)
     rag_results = [
         entry["line"].strip()
         for entry in log_entries
@@ -549,26 +810,48 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         ir_def_errors=ir_def_errors,
         generated_ir_errors=generated_ir_errors,
     )
+    mask_question = "" if terminated_at_preprocess else _extract_last_mask_question(log_entries)
+    sql_generation_knowledge = (
+        _default_knowledge_bundle(SQL_GENERATION_SCOPE)
+        if terminated_at_preprocess
+        else _extract_last_knowledge_sequence(log_entries, SQL_GENERATION_SCOPE)
+    )
+    few_shot_knowledge = (
+        _default_knowledge_bundle(FEW_SHOT_SCOPE)
+        if terminated_at_preprocess
+        else _extract_last_knowledge_sequence(log_entries, FEW_SHOT_SCOPE)
+    )
+    sql_rewrite_prompt_raw, sql_rewrite_prompt_json, sql_rewritten_question, sql_rewrite_errors = (
+        ("", "", "", [])
+        if terminated_at_preprocess
+        else _extract_sql_rewrite(log_entries)
+    )
 
-    rewritten_question = raw_match["rewrite_questions"][0] if raw_match["rewrite_questions"] else ""
+    rewritten_question = sql_rewritten_question or (raw_match["rewrite_questions"][0] if raw_match["rewrite_questions"] else "")
 
     missing_sections: list[str] = []
-    if not rag_results:
+    if not _is_skipped(skipped_sections, "rag_results") and not rag_results:
         missing_sections.append("rag_results")
-    if not rewritten_question:
+    if not _is_skipped(skipped_sections, "sql_rewritten_question") and not rewritten_question:
         missing_sections.append("rewritten_question")
-    if not recalled_tables:
+    if not _is_skipped(skipped_sections, "recalled_tables") and not recalled_tables:
         missing_sections.append("recalled_tables")
-    if not ir_table_definition:
+    if not _is_skipped(skipped_sections, "ir_table_definition") and not ir_table_definition:
         missing_sections.append("ir_table_definition")
-    if not final_prompt["raw"] and not final_prompt["combined"]:
+    if not _is_skipped(skipped_sections, "final_prompt") and not final_prompt["raw"] and not final_prompt["combined"]:
         missing_sections.append("final_prompt")
-    if not generated_ir:
+    if not _is_skipped(skipped_sections, "generated_ir") and not generated_ir:
         missing_sections.append("generated_ir")
-    if not complete_ir:
+    if not _is_skipped(skipped_sections, "complete_ir") and not complete_ir:
         missing_sections.append("complete_ir")
 
-    parse_errors = [*ir_def_errors, *final_prompt_errors, *generated_ir_errors, *complete_ir_errors]
+    parse_errors = [
+        *ir_def_errors,
+        *final_prompt_errors,
+        *generated_ir_errors,
+        *complete_ir_errors,
+        *sql_rewrite_errors,
+    ]
 
     return {
         "index": index,
@@ -580,14 +863,27 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "line_number": raw_match["line_number"],
         "associated_thread_ids": list(raw_match["associated_thread_ids"]),
         "rewrite_questions": list(raw_match["rewrite_questions"]),
+        "_segments": raw_match["segments"],
+        "ac_enriched_question": ac_enriched_question,
+        "preprocess_rewritten_question": preprocess_info["rewritten_question"],
+        "preprocess_decision": preprocess_decision,
+        "preprocess_knowledge": preprocess_knowledge,
+        "mask_question": mask_question,
+        "sql_generation_knowledge": sql_generation_knowledge,
+        "few_shot_knowledge": few_shot_knowledge,
+        "sql_rewrite_prompt_raw": sql_rewrite_prompt_raw,
+        "sql_rewrite_prompt_json": sql_rewrite_prompt_json,
         "rag_results": rag_results,
         "rewritten_question": rewritten_question,
+        "sql_rewritten_question": sql_rewritten_question,
         "recalled_tables": recalled_tables,
         "ir_table_definition": ir_table_definition,
         "final_prompt": final_prompt,
         "generated_ir": generated_ir,
         "complete_ir": complete_ir,
         "flow_status": flow_status,
+        "terminated_at_preprocess": terminated_at_preprocess,
+        "skipped_sections": skipped_sections,
         "retry_count": len(verifier_failures),
         "verifier_failures": verifier_failures,
         "missing_sections": missing_sections,

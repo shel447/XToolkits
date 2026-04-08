@@ -110,6 +110,51 @@ tables = get_tables_columns(table_exprs)
 2026-04-06 09:00:00.116 [INFO] [922222222222222] sqlflow res: sql: SELECT * FROM q2_table
 """
 
+PREPROCESS_SQL_FLOW_LOG = """2026-04-08 10:00:00.001 [INFO] [611111111111111] sql_template_match hit query: 原始问题
+2026-04-08 10:00:00.002 [INFO] [611111111111111] question after ac: AC补充后的问题
+2026-04-08 10:00:00.003 [INFO] [611111111111111] knowledge retriever: Global: preprocess global req
+2026-04-08 10:00:00.004 [INFO] [611111111111111] knowledge retriever success: preprocess global result
+2026-04-08 10:00:00.005 [INFO] [999999999999999] unrelated line
+2026-04-08 10:00:00.006 [INFO] [611111111111111] knowledge retriever: IntentionRewrite: preprocess rewrite req
+2026-04-08 10:00:00.007 [INFO] [611111111111111] knowledge retriever success: preprocess rewrite result
+2026-04-08 10:00:00.008 [INFO] [611111111111111] react chat llm chient res {"type":"DataQuery","query_intent": "预处理改写问题"}
+2026-04-08 10:00:00.009 [INFO] [611111111111111] call sqlflow input: 标准化问题
+2026-04-08 10:00:00.010 [INFO] [711111111111111] MASK QUESTION: 标准化问题
+2026-04-08 10:00:00.011 [INFO] [711111111111111] knowledge retriever: Global: sql global req
+2026-04-08 10:00:00.012 [INFO] [888888888888888] interleaved line
+2026-04-08 10:00:00.013 [INFO] [711111111111111] knowledge retriever success: sql global result
+2026-04-08 10:00:00.014 [INFO] [711111111111111] knowledge retriever: SQLGeneration: sql scoped req
+2026-04-08 10:00:00.015 [INFO] [877777777777777] interleaved line
+2026-04-08 10:00:00.016 [INFO] [711111111111111] knowledge retriever success: sql scoped result
+2026-04-08 10:00:00.017 [INFO] [711111111111111] knowledge retriever: Global: few global req
+2026-04-08 10:00:00.018 [INFO] [866666666666666] interleaved line
+2026-04-08 10:00:00.019 [INFO] [711111111111111] knowledge retriever success: few global result
+2026-04-08 10:00:00.020 [INFO] [711111111111111] knowledge retriever: SQLGenFewShot: few scoped req
+2026-04-08 10:00:00.021 [INFO] [711111111111111] knowledge retriever success: few scoped result
+2026-04-08 10:00:00.022 [INFO] [711111111111111] 问题改写任务：[{'role': 'system', 'content': 'rewrite prompt'}]
+2026-04-08 10:00:00.023 [INFO] [711111111111111] rewrite question from before to SQL改写后的问题
+2026-04-08 10:00:00.024 [INFO] [711111111111111] 召回表: sales_order
+2026-04-08 10:00:00.025 [INFO] [711111111111111] 表定义的IR：table sales_order(id)
+field amount
+2026-04-08 10:00:00.026 [INFO] [711111111111111] code guardrail check result safe
+2026-04-08 10:00:00.027 [INFO] [711111111111111] 生成器任务：{'messages': [{'role': 'system', 'content': 'system prompt'}, {'role': 'user', 'content': 'user prompt'}]}
+2026-04-08 10:00:00.028 [INFO] [711111111111111] 最终的IR
+@dataclass
+class DemoIR:
+tables = get_tables_columns(table_exprs)
+2026-04-08 10:00:00.029 [INFO] [711111111111111] sqlflow res: sql: select 1
+"""
+
+TERMINATED_PREPROCESS_LOG = """2026-04-08 11:00:00.001 [INFO] [811111111111112] sql_template_match hit query: 拒答问题
+2026-04-08 11:00:00.002 [INFO] [811111111111112] question after ac: 拒答AC问题
+2026-04-08 11:00:00.003 [INFO] [811111111111112] load klg for KlgScope.INTENTION_REJECT: reject knowledge
+2026-04-08 11:00:00.004 [INFO] [811111111111112] react chat llm chient res {"type":"RejectRequest","query_intent": "拒答改写"}
+2026-04-08 11:01:00.001 [INFO] [822222222222223] sql_template_match hit query: 追问问题
+2026-04-08 11:01:00.002 [INFO] [822222222222223] question after ac: 追问AC问题
+2026-04-08 11:01:00.003 [INFO] [822222222222223] load klg for KlgScope.INTENTION_FOLLOW_UP: follow knowledge
+2026-04-08 11:01:00.004 [INFO] [822222222222223] react chat llm chient res {"type":"AskHuman","query_intent": "追问改写"}
+"""
+
 def _build_ir_only_report(
     complete_ir: str,
     thread_id: str = "823456789012345",
@@ -432,6 +477,74 @@ class ExtractorTests(unittest.TestCase):
 
         self.assertEqual(report["total_questions"], 0)
         self.assertEqual(report["questions"], [])
+
+    def test_extract_report_populates_preprocess_and_sql_stage_fields(self) -> None:
+        report = extract_report(PREPROCESS_SQL_FLOW_LOG, "preprocess.log")
+
+        self.assertEqual(report["total_questions"], 1)
+        match = report["questions"][0]["matches"][0]
+        self.assertEqual(match["ac_enriched_question"], "AC补充后的问题")
+        self.assertEqual(match["preprocess_decision"], "data_query")
+        self.assertEqual(match["preprocess_rewritten_question"], "预处理改写问题")
+        self.assertEqual(
+            match["preprocess_knowledge"]["intention_rewrite"]["global_result"],
+            "preprocess global result",
+        )
+        self.assertEqual(
+            match["preprocess_knowledge"]["intention_rewrite"]["scope_result"],
+            "preprocess rewrite result",
+        )
+        self.assertEqual(match["mask_question"], "标准化问题")
+        self.assertEqual(
+            match["sql_generation_knowledge"]["scope_result"],
+            "sql scoped result",
+        )
+        self.assertEqual(
+            match["few_shot_knowledge"]["scope_result"],
+            "few scoped result",
+        )
+        self.assertEqual(match["sql_rewritten_question"], "SQL改写后的问题")
+        self.assertEqual(match["rewritten_question"], "SQL改写后的问题")
+        self.assertIn('"role": "system"', match["sql_rewrite_prompt_json"])
+        self.assertEqual(match["flow_status"], "success")
+        self.assertFalse(match["terminated_at_preprocess"])
+        self.assertEqual(match["skipped_sections"], [])
+
+    def test_extract_report_marks_reject_and_follow_up_as_terminated(self) -> None:
+        report = extract_report(TERMINATED_PREPROCESS_LOG, "terminated.log")
+
+        self.assertEqual(report["total_questions"], 2)
+        reject_match = report["questions"][0]["matches"][0]
+        self.assertEqual(reject_match["flow_status"], "reject")
+        self.assertTrue(reject_match["terminated_at_preprocess"])
+        self.assertEqual(reject_match["preprocess_rewritten_question"], "拒答改写")
+        self.assertEqual(reject_match["preprocess_knowledge"]["reject"], ["reject knowledge"])
+        self.assertIn("complete_ir", reject_match["skipped_sections"])
+        self.assertNotIn("complete_ir", reject_match["missing_sections"])
+        self.assertEqual(reject_match["complete_ir"], "")
+
+        follow_match = report["questions"][1]["matches"][0]
+        self.assertEqual(follow_match["flow_status"], "follow_up")
+        self.assertTrue(follow_match["terminated_at_preprocess"])
+        self.assertEqual(follow_match["preprocess_rewritten_question"], "追问改写")
+        self.assertEqual(follow_match["preprocess_knowledge"]["follow_up"], ["follow knowledge"])
+        self.assertIn("generated_ir", follow_match["skipped_sections"])
+        self.assertNotIn("generated_ir", follow_match["missing_sections"])
+
+    def test_render_html_shows_reject_follow_up_and_sql_rewrite_copy_actions(self) -> None:
+        report = extract_report(TERMINATED_PREPROCESS_LOG + PREPROCESS_SQL_FLOW_LOG, "mixed.log")
+        html = render_html(report)
+
+        self.assertIn("拒答问题数：1", html)
+        self.assertIn("追问问题数：1", html)
+        self.assertIn("nav-status nav-status-reject", html)
+        self.assertIn("nav-status nav-status-follow-up", html)
+        self.assertIn("流程状态：拒答", html)
+        self.assertIn("流程状态：追问", html)
+        self.assertIn("未执行（流程在预处理终止）", html)
+        self.assertIn('title="复制提示词 JSON"', html)
+        self.assertIn('title="复制改写问题"', html)
+        self.assertIn('data-copy-target="sql-rewrite-question-3-match-1-prompt-json"', html)
 
     def test_render_html_shows_navigation_prompt_and_missing_markers(self) -> None:
         report = extract_report((FIXTURES_ROOT / "complex_chatbi.log").read_text(encoding="utf-8"), "complex_chatbi.log")
