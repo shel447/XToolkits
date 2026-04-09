@@ -221,17 +221,17 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .nav-controls {{
       display: grid;
-      gap: 10px;
+      gap: 8px;
       margin-top: 12px;
-      padding: 10px;
+      padding: 8px;
       border: 1px solid #dde6f2;
       border-radius: 12px;
       background: #f8fbff;
     }}
     .nav-search-input {{
       width: 100%;
-      height: 32px;
-      padding: 0 10px;
+      height: 30px;
+      padding: 0 9px;
       border: 1px solid #cfdae9;
       border-radius: 9px;
       box-sizing: border-box;
@@ -239,25 +239,62 @@ def render_html(report: dict[str, Any]) -> str:
       color: #29425b;
       background: #ffffff;
     }}
-    .nav-filter-row {{
-      display: grid;
-      gap: 8px;
-    }}
-    .nav-filter-label {{
-      font-size: 11px;
-      font-weight: 700;
-      color: #5c7089;
-    }}
-    .nav-status-filters {{
+    .nav-filters-inline {{
       display: flex;
-      flex-wrap: wrap;
+      align-items: center;
       gap: 6px;
+      min-width: 0;
     }}
-    .nav-filter-button {{
+    .nav-status-dropdown {{
+      position: relative;
+      min-width: 0;
+    }}
+    .nav-status-toggle {{
+      max-width: 100%;
       height: 28px;
       padding: 0 10px;
       border: 1px solid #cfd9e7;
       border-radius: 999px;
+      background: #ffffff;
+      color: #41566f;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+    .nav-status-toggle:hover {{
+      background: #eef5ff;
+    }}
+    .nav-status-menu {{
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 18;
+      display: grid;
+      gap: 6px;
+      min-width: 170px;
+      padding: 8px;
+      border: 1px solid #d9e2ef;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    }}
+    .nav-status-menu[hidden] {{
+      display: none;
+    }}
+    .nav-status-filters {{
+      display: grid;
+      gap: 6px;
+    }}
+    .nav-filter-button {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 26px;
+      padding: 0 8px;
+      border: 1px solid #cfd9e7;
+      border-radius: 8px;
       background: #ffffff;
       color: #4b617b;
       font-size: 11px;
@@ -272,26 +309,43 @@ def render_html(report: dict[str, Any]) -> str:
       border-color: #9ad8cb;
       color: var(--accent);
     }}
-    .nav-sort-select {{
-      width: 100%;
-      height: 32px;
-      padding: 0 10px;
+    .nav-retry-filter {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 8px;
       border: 1px solid #cfdae9;
-      border-radius: 9px;
+      border-radius: 999px;
       background: #ffffff;
-      color: #29425b;
-      font-size: 12px;
+      color: #4b617b;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }}
+    .nav-retry-min-input {{
+      width: 42px;
+      height: 20px;
+      padding: 0 4px;
+      border: 1px solid #d3ddeb;
+      border-radius: 6px;
       box-sizing: border-box;
+      font-size: 11px;
+      color: #29425b;
+      background: #ffffff;
     }}
     .nav-reset-button {{
-      height: 30px;
+      height: 28px;
+      padding: 0 9px;
       border: 1px solid #d3ddeb;
-      border-radius: 10px;
+      border-radius: 999px;
       background: #ffffff;
       color: #41566f;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto;
     }}
     .nav-empty-state {{
       margin-top: 12px;
@@ -1306,7 +1360,7 @@ def render_html(report: dict[str, Any]) -> str:
     let navFilterState = {{
       searchText: '',
       statuses: ['success', 'failed', 'unknown', 'reject', 'follow_up'],
-      sortOrder: 'default',
+      minRetryCount: '',
     }};
     let flowBoundaryPendingDirection = 0;
     let flowBoundaryPendingAt = 0;
@@ -1354,7 +1408,7 @@ def render_html(report: dict[str, Any]) -> str:
       return {{
         searchText: '',
         statuses: ['success', 'failed', 'unknown', 'reject', 'follow_up'],
-        sortOrder: 'default',
+        minRetryCount: '',
       }};
     }}
 
@@ -1369,13 +1423,11 @@ def render_html(report: dict[str, Any]) -> str:
         const statuses = Array.isArray(parsed?.statuses)
           ? parsed.statuses.filter((value) => defaults.statuses.includes(String(value)))
           : defaults.statuses;
-        const sortOrder = ['default', 'retry-asc', 'retry-desc'].includes(parsed?.sortOrder)
-          ? parsed.sortOrder
-          : defaults.sortOrder;
+        const minRetryCount = typeof parsed?.minRetryCount === 'string' ? parsed.minRetryCount : defaults.minRetryCount;
         return {{
           searchText: typeof parsed?.searchText === 'string' ? parsed.searchText : defaults.searchText,
-          statuses,
-          sortOrder,
+          statuses: statuses.length ? statuses : defaults.statuses,
+          minRetryCount,
         }};
       }} catch (error) {{
         return defaults;
@@ -1518,12 +1570,12 @@ def render_html(report: dict[str, Any]) -> str:
 
     function syncNavigationControls() {{
       const searchInput = document.getElementById('nav-search-input');
-      const sortSelect = document.getElementById('nav-sort-select');
+      const retryMinInput = document.getElementById('nav-retry-min-input');
       if (searchInput) {{
         searchInput.value = navFilterState.searchText;
       }}
-      if (sortSelect) {{
-        sortSelect.value = navFilterState.sortOrder;
+      if (retryMinInput) {{
+        retryMinInput.value = navFilterState.minRetryCount;
       }}
       const statusFilters = new Set(navFilterState.statuses);
       document.querySelectorAll('[data-status-filter]').forEach((button) => {{
@@ -1531,6 +1583,41 @@ def render_html(report: dict[str, Any]) -> str:
         button.classList.toggle('nav-filter-button-active', selected);
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
       }});
+      updateStatusToggleLabel();
+    }}
+
+    function updateStatusToggleLabel() {{
+      const toggle = document.getElementById('nav-status-toggle');
+      if (!toggle) {{
+        return;
+      }}
+      const total = getDefaultNavFilterState().statuses.length;
+      const selectedCount = navFilterState.statuses.length;
+      let label = '状态';
+      if (selectedCount === total) {{
+        label = '状态: 全部';
+      }} else if (selectedCount === 0) {{
+        label = '状态: 无';
+      }} else {{
+        label = `状态: ${{selectedCount}}项`;
+      }}
+      toggle.textContent = label;
+    }}
+
+    function toggleStatusMenu(forceOpen = null) {{
+      const menu = document.getElementById('nav-status-menu');
+      const toggle = document.getElementById('nav-status-toggle');
+      if (!menu || !toggle) {{
+        return;
+      }}
+      const shouldOpen = forceOpen === null ? menu.hasAttribute('hidden') : forceOpen;
+      if (shouldOpen) {{
+        menu.removeAttribute('hidden');
+        toggle.setAttribute('aria-expanded', 'true');
+      }} else {{
+        menu.setAttribute('hidden', '');
+        toggle.setAttribute('aria-expanded', 'false');
+      }}
     }}
 
     function getVisibleMatchAnchors() {{
@@ -1580,7 +1667,7 @@ def render_html(report: dict[str, Any]) -> str:
       const questionItems = Array.from(navList.children).filter((item) => item.classList.contains('nav-question-item'));
       const statusFilters = new Set(navFilterState.statuses);
       const searchKeyword = navFilterState.searchText.trim().toLowerCase();
-      const sortOrder = navFilterState.sortOrder;
+      const minRetryCount = Number.parseInt(navFilterState.minRetryCount || '0', 10);
 
       questionItems.forEach((questionItem) => {{
         const questionText = (questionItem.getAttribute('data-question-text') || '').toLowerCase();
@@ -1590,35 +1677,16 @@ def render_html(report: dict[str, Any]) -> str:
           ? Array.from(matchList.children).filter((item) => item.classList.contains('nav-match-item'))
           : [];
         const visibleMatchItems = [];
-        const hiddenMatchItems = [];
 
         matchItems.forEach((matchItem) => {{
           const flowStatus = matchItem.getAttribute('data-flow-status') || '';
-          const visible = questionMatchesSearch && statusFilters.has(flowStatus);
+          const retryCount = Number.parseInt(matchItem.getAttribute('data-retry-count') || '0', 10);
+          const visible = questionMatchesSearch && statusFilters.has(flowStatus) && retryCount >= minRetryCount;
           matchItem.hidden = !visible;
           if (visible) {{
             visibleMatchItems.push(matchItem);
-          }} else {{
-            hiddenMatchItems.push(matchItem);
           }}
         }});
-
-        if (sortOrder !== 'default') {{
-          matchItems.sort((left, right) => {{
-            const leftRetry = Number.parseInt(left.getAttribute('data-retry-count') || '0', 10);
-            const rightRetry = Number.parseInt(right.getAttribute('data-retry-count') || '0', 10);
-            if (leftRetry !== rightRetry) {{
-              return sortOrder === 'retry-asc' ? leftRetry - rightRetry : rightRetry - leftRetry;
-            }}
-            const leftOrder = Number.parseInt(left.getAttribute('data-nav-order') || '0', 10);
-            const rightOrder = Number.parseInt(right.getAttribute('data-nav-order') || '0', 10);
-            return leftOrder - rightOrder;
-          }});
-        }}
-
-        if (matchList) {{
-          matchItems.forEach((item) => matchList.appendChild(item));
-        }}
         questionItem.hidden = visibleMatchItems.length === 0;
       }});
 
@@ -1634,8 +1702,10 @@ def render_html(report: dict[str, Any]) -> str:
       syncNavigationControls();
 
       const searchInput = document.getElementById('nav-search-input');
-      const sortSelect = document.getElementById('nav-sort-select');
+      const retryMinInput = document.getElementById('nav-retry-min-input');
       const resetButton = document.getElementById('nav-reset-button');
+      const statusToggle = document.getElementById('nav-status-toggle');
+      const statusMenu = document.getElementById('nav-status-menu');
 
       if (searchInput) {{
         searchInput.addEventListener('input', () => {{
@@ -1644,11 +1714,19 @@ def render_html(report: dict[str, Any]) -> str:
           applyNavigationFilters();
         }});
       }}
-      if (sortSelect) {{
-        sortSelect.addEventListener('change', () => {{
-          navFilterState.sortOrder = sortSelect.value || 'default';
+      if (retryMinInput) {{
+        retryMinInput.addEventListener('input', () => {{
+          const digitsOnly = retryMinInput.value.replace(/[^0-9]/g, '');
+          retryMinInput.value = digitsOnly;
+          navFilterState.minRetryCount = retryMinInput.value;
           saveNavFilterState();
           applyNavigationFilters();
+        }});
+      }}
+      if (statusToggle) {{
+        statusToggle.addEventListener('click', (event) => {{
+          event.stopPropagation();
+          toggleStatusMenu();
         }});
       }}
       document.querySelectorAll('[data-status-filter]').forEach((button) => {{
@@ -1674,9 +1752,23 @@ def render_html(report: dict[str, Any]) -> str:
           navFilterState = getDefaultNavFilterState();
           saveNavFilterState();
           syncNavigationControls();
+          toggleStatusMenu(false);
           applyNavigationFilters();
         }});
       }}
+      document.addEventListener('click', (event) => {{
+        const target = event.target;
+        if (!(target instanceof Node)) {{
+          return;
+        }}
+        if (statusMenu && statusMenu.contains(target)) {{
+          return;
+        }}
+        if (statusToggle && statusToggle.contains(target)) {{
+          return;
+        }}
+        toggleStatusMenu(false);
+      }});
     }}
 
     function applyDetailVisibility() {{
@@ -3251,19 +3343,19 @@ def _render_nav_controls() -> str:
     return f"""
     <div class="nav-controls">
       <input id="nav-search-input" class="nav-search-input" type="search" placeholder="搜索问题关键字" />
-      <div class="nav-filter-row">
-        <div class="nav-filter-label">状态过滤</div>
-        <div class="nav-status-filters">{status_buttons}</div>
+      <div class="nav-filters-inline">
+        <div class="nav-status-dropdown">
+          <button id="nav-status-toggle" class="nav-status-toggle" type="button" aria-expanded="false">状态: 全部</button>
+          <div id="nav-status-menu" class="nav-status-menu" hidden>
+            <div class="nav-status-filters">{status_buttons}</div>
+          </div>
+        </div>
+        <label class="nav-retry-filter" for="nav-retry-min-input">
+          <span>重试≥</span>
+          <input id="nav-retry-min-input" class="nav-retry-min-input" type="text" inputmode="numeric" value="" />
+        </label>
+        <button id="nav-reset-button" class="nav-reset-button" type="button">清空</button>
       </div>
-      <div class="nav-filter-row">
-        <div class="nav-filter-label">重试排序</div>
-        <select id="nav-sort-select" class="nav-sort-select">
-          <option value="default">默认顺序</option>
-          <option value="retry-asc">重试次数升序</option>
-          <option value="retry-desc">重试次数降序</option>
-        </select>
-      </div>
-      <button id="nav-reset-button" class="nav-reset-button" type="button">清空条件</button>
     </div>
     """
 
