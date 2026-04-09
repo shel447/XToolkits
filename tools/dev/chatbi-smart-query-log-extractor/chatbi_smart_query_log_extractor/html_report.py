@@ -1361,9 +1361,7 @@ def render_html(report: dict[str, Any]) -> str:
         if (activeContentTab !== 'flow') {{
           return;
         }}
-        const target = event.target;
-        const insideFlowWrap = target instanceof Element && Boolean(target.closest('.flow-svg-wrap'));
-        if (!(event.ctrlKey || event.metaKey || insideFlowWrap)) {{
+        if (!(event.ctrlKey || event.metaKey)) {{
           return;
         }}
         event.preventDefault();
@@ -1625,9 +1623,7 @@ def render_html(report: dict[str, Any]) -> str:
           resetFlowBoundarySwitchIntent();
           return;
         }}
-        const target = event.target;
-        const insideFlowWrap = target instanceof Element && Boolean(target.closest('.flow-svg-wrap'));
-        if (event.ctrlKey || event.metaKey || insideFlowWrap) {{
+        if (event.ctrlKey || event.metaKey) {{
           resetFlowBoundarySwitchIntent();
           return;
         }}
