@@ -19,6 +19,7 @@ RAG_KEYWORD = "knowledge retriever success"
 REWRITE_KEYWORD = "rewrite question from"
 SCHEMA_KEYWORD = "Schema链接完成"
 RECALL_KEYWORD = "召回表"
+TABLE_MISSING_KEYWORD = "表不存在："
 IR_DEF_START = "表定义的IR："
 IR_DEF_STOP = "code guardrail check result"
 PROMPT_KEYWORD = "生成器任务："
@@ -672,6 +673,9 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         line = entry["line"]
         if RECALL_KEYWORD in line:
             recalled_tables.append(line.split("召回表:", 1)[-1].strip())
+        elif TABLE_MISSING_KEYWORD in line:
+            recalled_tables.append(_extract_after_keyword(line, TABLE_MISSING_KEYWORD).strip())
+            recalled_tables[-1] = f"{TABLE_MISSING_KEYWORD}{recalled_tables[-1]}"
         elif SCHEMA_KEYWORD in line:
             recalled_tables.append(line.strip())
 
@@ -817,6 +821,9 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         line = entry["line"]
         if RECALL_KEYWORD in line:
             recalled_tables.append(line.split("召回表:", 1)[-1].strip())
+        elif TABLE_MISSING_KEYWORD in line:
+            recalled_tables.append(_extract_after_keyword(line, TABLE_MISSING_KEYWORD).strip())
+            recalled_tables[-1] = f"{TABLE_MISSING_KEYWORD}{recalled_tables[-1]}"
         elif SCHEMA_KEYWORD in line:
             recalled_tables.append(line.strip())
 

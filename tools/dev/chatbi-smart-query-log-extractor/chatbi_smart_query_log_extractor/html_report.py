@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+import re
 from html import escape
 from typing import Any
 
@@ -626,6 +627,14 @@ def render_html(report: dict[str, Any]) -> str:
       margin: 0 0 8px;
       font-size: 13px;
       color: #42546d;
+    }}
+    .missing-table-item {{
+      color: #8b1e1e;
+      font-weight: 700;
+    }}
+    .missing-table-name {{
+      color: #b42318;
+      font-weight: 800;
     }}
     .status-summary {{
       display: flex;
@@ -3014,7 +3023,7 @@ def _render_list_section(
         </section>
         """
     class_name = kind or "list"
-    rendered_items = "".join(f"<li>{escape(item)}</li>" for item in items)
+    rendered_items = "".join(_render_list_item(item) for item in items)
     return f"""
     <section class="section">
       <h3>{escape(title)}</h3>
@@ -3025,7 +3034,7 @@ def _render_list_section(
 
 def _render_highlight_list_section(title: str, items: list[str], block_class: str) -> str:
     if items:
-        content = f'<ul class="list">{"".join(f"<li>{escape(item)}</li>" for item in items)}</ul>'
+        content = f'<ul class="list">{"".join(_render_list_item(item) for item in items)}</ul>'
     else:
         content = "未命中该字段"
     return f"""
@@ -3045,7 +3054,7 @@ def _render_collapsible_list_section(
     if not items:
         return _render_list_section(title, items, kind, skipped=skipped)
     class_name = kind or "list"
-    rendered_items = "".join(f"<li>{escape(item)}</li>" for item in items)
+    rendered_items = "".join(_render_list_item(item) for item in items)
     return f"""
     <details class="section collapsible">
       <summary>{escape(title)}</summary>
@@ -3054,6 +3063,19 @@ def _render_collapsible_list_section(
       </div>
     </details>
     """
+
+
+def _render_list_item(item: str) -> str:
+    missing_table_match = re.match(r"^表不存在：(?P<table>[^，,]+)(?P<rest>.*)$", str(item).strip())
+    if not missing_table_match:
+        return f"<li>{escape(str(item))}</li>"
+    table_name = missing_table_match.group("table").strip()
+    rest = missing_table_match.group("rest")
+    return (
+        '<li class="missing-table-item">表不存在：'
+        f'<strong class="missing-table-name">{escape(table_name)}</strong>'
+        f'{escape(rest)}</li>'
+    )
 
 
 def _format_knowledge_bundle(bundle: dict[str, Any] | None) -> str:

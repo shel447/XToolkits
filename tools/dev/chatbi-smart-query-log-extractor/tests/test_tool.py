@@ -133,6 +133,7 @@ PREPROCESS_SQL_FLOW_LOG = """2026-04-08 10:00:00.001 [INFO] [611111111111111] sq
 2026-04-08 10:00:00.021 [INFO] [711111111111111] knowledge retriever success: {'recommends': [{'id': 'fs1'}, {'id': 'fs2'}]}
 2026-04-08 10:00:00.022 [INFO] [711111111111111] 问题改写任务：[{'role': 'system', 'content': 'rewrite prompt'}]
 2026-04-08 10:00:00.023 [INFO] [711111111111111] rewrite question from before to SQL改写后的问题
+2026-04-08 10:00:00.023 [INFO] [711111111111111] 表不存在：missing_sales，错误详情 表元数据缺失
 2026-04-08 10:00:00.024 [INFO] [711111111111111] 召回表: sales_order
 2026-04-08 10:00:00.025 [INFO] [711111111111111] 表定义的IR：table sales_order(id)
 field amount
@@ -522,6 +523,7 @@ class ExtractorTests(unittest.TestCase):
         )
         self.assertEqual(match["sql_rewritten_question"], "SQL改写后的问题")
         self.assertEqual(match["rewritten_question"], "SQL改写后的问题")
+        self.assertIn("表不存在：missing_sales，错误详情 表元数据缺失", match["recalled_tables"])
         self.assertIn('"role": "system"', match["sql_rewrite_prompt_json"])
         self.assertEqual(match["flow_status"], "success")
         self.assertFalse(match["terminated_at_preprocess"])
@@ -571,6 +573,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn(">Global 1 / IntentionRewrite 2 / IntentionReject 0 / IntentionFollowUp 0<", html)
         self.assertIn(">SQL改写后的问题<", html)
         self.assertIn(">Global 5 / SQLGeneration 1 / SQLGenFewShot 2<", html)
+        self.assertIn('class="missing-table-item"', html)
+        self.assertIn('class="missing-table-name">missing_sales</strong>', html)
         self.assertIn('title="复制提示词 JSON"', html)
         self.assertIn('title="复制改写问题"', html)
         self.assertRegex(html, r'data-copy-target="sql-rewrite-question-\d+-match-\d+-prompt-json"')
