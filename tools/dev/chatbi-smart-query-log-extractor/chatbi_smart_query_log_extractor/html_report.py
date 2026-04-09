@@ -221,19 +221,18 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .nav-controls {{
       display: grid;
-      gap: 8px;
-      margin-top: 12px;
-      padding: 8px;
-      border: 1px solid #dde6f2;
-      border-radius: 12px;
-      background: #f8fbff;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 0;
+      border: none;
+      background: transparent;
     }}
     .nav-search-input {{
       width: 100%;
-      height: 30px;
-      padding: 0 9px;
+      height: 28px;
+      padding: 0 8px;
       border: 1px solid #cfdae9;
-      border-radius: 9px;
+      border-radius: 8px;
       box-sizing: border-box;
       font-size: 12px;
       color: #29425b;
@@ -242,17 +241,18 @@ def render_html(report: dict[str, Any]) -> str:
     .nav-filters-inline {{
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       min-width: 0;
     }}
     .nav-status-dropdown {{
       position: relative;
-      min-width: 0;
+      min-width: 70px;
+      flex: 0 0 auto;
     }}
     .nav-status-toggle {{
-      max-width: 100%;
-      height: 28px;
-      padding: 0 10px;
+      width: 100%;
+      height: 26px;
+      padding: 0 8px;
       border: 1px solid #cfd9e7;
       border-radius: 999px;
       background: #ffffff;
@@ -261,6 +261,9 @@ def render_html(report: dict[str, Any]) -> str:
       font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
+      line-height: 24px;
+      text-align: center;
+      box-sizing: border-box;
     }}
     .nav-status-toggle:hover {{
       background: #eef5ff;
@@ -271,11 +274,11 @@ def render_html(report: dict[str, Any]) -> str:
       left: 0;
       z-index: 18;
       display: grid;
-      gap: 6px;
-      min-width: 170px;
-      padding: 8px;
+      gap: 4px;
+      min-width: 132px;
+      padding: 6px;
       border: 1px solid #d9e2ef;
-      border-radius: 12px;
+      border-radius: 10px;
       background: #ffffff;
       box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
     }}
@@ -284,37 +287,56 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .nav-status-filters {{
       display: grid;
-      gap: 6px;
+      gap: 2px;
     }}
     .nav-filter-button {{
       display: flex;
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      height: 26px;
-      padding: 0 8px;
-      border: 1px solid #cfd9e7;
-      border-radius: 8px;
-      background: #ffffff;
+      min-height: 24px;
+      padding: 4px 6px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
       color: #4b617b;
       font-size: 11px;
       font-weight: 700;
       cursor: pointer;
+      line-height: 1.2;
+      box-sizing: border-box;
     }}
     .nav-filter-button:hover {{
-      background: #eef5ff;
+      background: #f1f6fd;
     }}
     .nav-filter-button.nav-filter-button-active {{
       background: #e8f5f2;
-      border-color: #9ad8cb;
       color: var(--accent);
+    }}
+    .nav-filter-label-text {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .nav-filter-check {{
+      width: 12px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 800;
+      color: currentColor;
+      opacity: 0;
+      flex: 0 0 auto;
+    }}
+    .nav-filter-button.nav-filter-button-active .nav-filter-check {{
+      opacity: 1;
     }}
     .nav-retry-filter {{
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      height: 28px;
-      padding: 0 8px;
+      gap: 4px;
+      height: 26px;
+      padding: 0 7px;
       border: 1px solid #cfdae9;
       border-radius: 999px;
       background: #ffffff;
@@ -322,24 +344,25 @@ def render_html(report: dict[str, Any]) -> str:
       font-size: 11px;
       font-weight: 700;
       white-space: nowrap;
+      flex: 0 0 auto;
     }}
     .nav-retry-min-input {{
-      width: 42px;
-      height: 20px;
-      padding: 0 4px;
+      width: 34px;
+      height: 18px;
+      padding: 0 3px;
       border: 1px solid #d3ddeb;
-      border-radius: 6px;
+      border-radius: 5px;
       box-sizing: border-box;
       font-size: 11px;
       color: #29425b;
       background: #ffffff;
     }}
     .nav-reset-button {{
-      height: 28px;
-      padding: 0 9px;
-      border: 1px solid #d3ddeb;
+      height: 26px;
+      padding: 0 6px;
+      border: none;
       border-radius: 999px;
-      background: #ffffff;
+      background: transparent;
       color: #41566f;
       font-size: 11px;
       font-weight: 700;
@@ -347,14 +370,16 @@ def render_html(report: dict[str, Any]) -> str:
       white-space: nowrap;
       flex: 0 0 auto;
     }}
+    .nav-reset-button:hover {{
+      background: #edf3fb;
+    }}
     .nav-empty-state {{
-      margin-top: 12px;
-      padding: 10px 12px;
-      border: 1px dashed #d2dceb;
-      border-radius: 12px;
+      margin-top: 8px;
+      padding: 2px 2px 0;
+      border: none;
       color: #62748b;
       font-size: 12px;
-      background: #f8fbff;
+      background: transparent;
     }}
     .nav a {{
       color: var(--accent);
@@ -1595,11 +1620,11 @@ def render_html(report: dict[str, Any]) -> str:
       const selectedCount = navFilterState.statuses.length;
       let label = '状态';
       if (selectedCount === total) {{
-        label = '状态: 全部';
+        label = '状态(全)';
       }} else if (selectedCount === 0) {{
-        label = '状态: 无';
+        label = '状态(无)';
       }} else {{
-        label = `状态: ${{selectedCount}}项`;
+        label = `状态(${{selectedCount}})`;
       }}
       toggle.textContent = label;
     }}
@@ -3330,7 +3355,7 @@ def _render_nav_controls() -> str:
     status_buttons = "".join(
         (
             f'<button type="button" class="nav-filter-button" data-status-filter="{status}" aria-pressed="true">'
-            f"{label}</button>"
+            f'<span class="nav-filter-label-text">{label}</span><span class="nav-filter-check">✓</span></button>'
         )
         for status, label in [
             ("success", "成功"),
@@ -3345,7 +3370,7 @@ def _render_nav_controls() -> str:
       <input id="nav-search-input" class="nav-search-input" type="search" placeholder="搜索问题关键字" />
       <div class="nav-filters-inline">
         <div class="nav-status-dropdown">
-          <button id="nav-status-toggle" class="nav-status-toggle" type="button" aria-expanded="false">状态: 全部</button>
+          <button id="nav-status-toggle" class="nav-status-toggle" type="button" aria-expanded="false">状态(全)</button>
           <div id="nav-status-menu" class="nav-status-menu" hidden>
             <div class="nav-status-filters">{status_buttons}</div>
           </div>
