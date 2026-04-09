@@ -47,12 +47,21 @@ def render_html(report: dict[str, Any]) -> str:
             anchor_id = f"{question_anchor_id}-match-{match['index']}"
             if not active_flow_anchor:
                 active_flow_anchor = anchor_id
-            match_nav_items.append(f"<li>{_render_nav_match_link(anchor_id, match, question_anchor_id)}</li>")
+            match_nav_items.append(
+                _render_nav_match_item(
+                    anchor_id,
+                    match,
+                    question_anchor_id,
+                )
+            )
             flow_views.append(_render_flow_view(anchor_id, match, active=anchor_id == active_flow_anchor))
-        nested_nav = f"<ul>{''.join(match_nav_items)}</ul>" if match_nav_items else ""
+        nested_nav = f'<ul class="nav-match-list">{"".join(match_nav_items)}</ul>' if match_nav_items else ""
         nav_items.append(
-            f'<li><a class="nav-question-link" data-question-anchor="{escape(question_anchor_id)}" '
-            f'href="#{question_anchor_id}">{escape(question_label)}</a>{nested_nav}</li>'
+            f'<li class="nav-question-item" data-question-anchor="{escape(question_anchor_id)}" '
+            f'data-question-text="{_escape_data_attr(question_label)}" data-nav-order="{question_index}">'
+            f'<a class="nav-question-link" data-question-anchor="{escape(question_anchor_id)}" '
+            f'data-question-text="{_escape_data_attr(question_label)}" href="#{question_anchor_id}">{escape(question_label)}</a>'
+            f"{nested_nav}</li>"
         )
         detail_sections.append(_render_question_group(question_anchor_id, question_group))
 
@@ -209,6 +218,89 @@ def render_html(report: dict[str, Any]) -> str:
     .nav ul {{
       margin: 10px 0 0;
       padding-left: 18px;
+    }}
+    .nav-controls {{
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 10px;
+      border: 1px solid #dde6f2;
+      border-radius: 12px;
+      background: #f8fbff;
+    }}
+    .nav-search-input {{
+      width: 100%;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid #cfdae9;
+      border-radius: 9px;
+      box-sizing: border-box;
+      font-size: 12px;
+      color: #29425b;
+      background: #ffffff;
+    }}
+    .nav-filter-row {{
+      display: grid;
+      gap: 8px;
+    }}
+    .nav-filter-label {{
+      font-size: 11px;
+      font-weight: 700;
+      color: #5c7089;
+    }}
+    .nav-status-filters {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+    .nav-filter-button {{
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid #cfd9e7;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #4b617b;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .nav-filter-button:hover {{
+      background: #eef5ff;
+    }}
+    .nav-filter-button.nav-filter-button-active {{
+      background: #e8f5f2;
+      border-color: #9ad8cb;
+      color: var(--accent);
+    }}
+    .nav-sort-select {{
+      width: 100%;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid #cfdae9;
+      border-radius: 9px;
+      background: #ffffff;
+      color: #29425b;
+      font-size: 12px;
+      box-sizing: border-box;
+    }}
+    .nav-reset-button {{
+      height: 30px;
+      border: 1px solid #d3ddeb;
+      border-radius: 10px;
+      background: #ffffff;
+      color: #41566f;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .nav-empty-state {{
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px dashed #d2dceb;
+      border-radius: 12px;
+      color: #62748b;
+      font-size: 12px;
+      background: #f8fbff;
     }}
     .nav a {{
       color: var(--accent);
@@ -988,7 +1080,9 @@ def render_html(report: dict[str, Any]) -> str:
     <div class="layout">
       <aside class="nav">
         <strong>问题导航</strong>
-        <ul>{nav_html}</ul>
+        {_render_nav_controls()}
+        <ul id="nav-list">{nav_html}</ul>
+        <div id="nav-empty-state" class="nav-empty-state" hidden>无匹配结果</div>
       </aside>
       <section class="workspace">
         <section class="workspace-shell">
@@ -1196,6 +1290,7 @@ def render_html(report: dict[str, Any]) -> str:
       {{ key: 'parse_errors', label: '解析错误' }},
     ];
     const DETAIL_FIELD_STORAGE_KEY = 'chatbi_report_detail_fields_v1';
+    const NAV_FILTER_STATE_STORAGE_KEY = 'chatbi_report_nav_filters_v1';
     const FLOW_ZOOM_STORAGE_KEY = 'chatbi_report_flow_zoom_v1';
     const FLOW_ZOOM_DEFAULT = 0.82;
     const FLOW_ZOOM_MIN = 0.55;
@@ -1208,6 +1303,11 @@ def render_html(report: dict[str, Any]) -> str:
     let navSyncTicking = false;
     let activeContentTab = 'flow';
     let flowZoom = FLOW_ZOOM_DEFAULT;
+    let navFilterState = {{
+      searchText: '',
+      statuses: ['success', 'failed', 'unknown', 'reject', 'follow_up'],
+      sortOrder: 'default',
+    }};
     let flowBoundaryPendingDirection = 0;
     let flowBoundaryPendingAt = 0;
     let lastFlowSwitchAt = 0;
@@ -1246,6 +1346,45 @@ def render_html(report: dict[str, Any]) -> str:
     function saveDetailVisibility() {{
       try {{
         window.localStorage.setItem(DETAIL_FIELD_STORAGE_KEY, JSON.stringify(detailFieldVisibility));
+      }} catch (error) {{
+      }}
+    }}
+
+    function getDefaultNavFilterState() {{
+      return {{
+        searchText: '',
+        statuses: ['success', 'failed', 'unknown', 'reject', 'follow_up'],
+        sortOrder: 'default',
+      }};
+    }}
+
+    function loadNavFilterState() {{
+      const defaults = getDefaultNavFilterState();
+      try {{
+        const raw = window.localStorage.getItem(NAV_FILTER_STATE_STORAGE_KEY);
+        if (!raw) {{
+          return defaults;
+        }}
+        const parsed = JSON.parse(raw);
+        const statuses = Array.isArray(parsed?.statuses)
+          ? parsed.statuses.filter((value) => defaults.statuses.includes(String(value)))
+          : defaults.statuses;
+        const sortOrder = ['default', 'retry-asc', 'retry-desc'].includes(parsed?.sortOrder)
+          ? parsed.sortOrder
+          : defaults.sortOrder;
+        return {{
+          searchText: typeof parsed?.searchText === 'string' ? parsed.searchText : defaults.searchText,
+          statuses,
+          sortOrder,
+        }};
+      }} catch (error) {{
+        return defaults;
+      }}
+    }}
+
+    function saveNavFilterState() {{
+      try {{
+        window.localStorage.setItem(NAV_FILTER_STATE_STORAGE_KEY, JSON.stringify(navFilterState));
       }} catch (error) {{
       }}
     }}
@@ -1375,6 +1514,169 @@ def render_html(report: dict[str, Any]) -> str:
     function resetFlowBoundarySwitchIntent() {{
       flowBoundaryPendingDirection = 0;
       flowBoundaryPendingAt = 0;
+    }}
+
+    function syncNavigationControls() {{
+      const searchInput = document.getElementById('nav-search-input');
+      const sortSelect = document.getElementById('nav-sort-select');
+      if (searchInput) {{
+        searchInput.value = navFilterState.searchText;
+      }}
+      if (sortSelect) {{
+        sortSelect.value = navFilterState.sortOrder;
+      }}
+      const statusFilters = new Set(navFilterState.statuses);
+      document.querySelectorAll('[data-status-filter]').forEach((button) => {{
+        const selected = statusFilters.has(button.getAttribute('data-status-filter') || '');
+        button.classList.toggle('nav-filter-button-active', selected);
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      }});
+    }}
+
+    function getVisibleMatchAnchors() {{
+      return Array.from(document.querySelectorAll('.nav-match-item[data-match-anchor]'))
+        .filter((item) => !item.hidden)
+        .map((item) => item.getAttribute('data-match-anchor') || '')
+        .filter(Boolean);
+    }}
+
+    function ensureActiveMatchIsVisible() {{
+      const visibleMatchAnchors = getVisibleMatchAnchors();
+      const currentMatchAnchor = getActiveMatchAnchorFromViewport();
+      if (!visibleMatchAnchors.length) {{
+        updateActiveNavLinks('');
+        return;
+      }}
+      if (visibleMatchAnchors.includes(currentMatchAnchor)) {{
+        updateActiveNavLinks(currentMatchAnchor);
+        return;
+      }}
+      let nextAnchor = '';
+      const currentQuestionAnchor = currentMatchAnchor
+        ? document.querySelector(`.nav-match-item[data-match-anchor="${{CSS.escape(currentMatchAnchor)}}"]`)?.getAttribute('data-parent-question-anchor') || ''
+        : '';
+      if (currentQuestionAnchor) {{
+        nextAnchor = visibleMatchAnchors.find((anchor) => {{
+          const item = document.querySelector(`.nav-match-item[data-match-anchor="${{CSS.escape(anchor)}}"]`);
+          return item?.getAttribute('data-parent-question-anchor') === currentQuestionAnchor;
+        }}) || '';
+      }}
+      if (!nextAnchor) {{
+        nextAnchor = visibleMatchAnchors[0];
+      }}
+      activateMatchAnchor(nextAnchor, {{
+        preserveTab: true,
+        scrollDetails: activeContentTab === 'details',
+        resetFlowScroll: false,
+      }});
+    }}
+
+    function applyNavigationFilters() {{
+      const navList = document.getElementById('nav-list');
+      const emptyState = document.getElementById('nav-empty-state');
+      if (!navList) {{
+        return;
+      }}
+      const questionItems = Array.from(navList.children).filter((item) => item.classList.contains('nav-question-item'));
+      const statusFilters = new Set(navFilterState.statuses);
+      const searchKeyword = navFilterState.searchText.trim().toLowerCase();
+      const sortOrder = navFilterState.sortOrder;
+
+      questionItems.forEach((questionItem) => {{
+        const questionText = (questionItem.getAttribute('data-question-text') || '').toLowerCase();
+        const questionMatchesSearch = !searchKeyword || questionText.includes(searchKeyword);
+        const matchList = questionItem.querySelector('.nav-match-list');
+        const matchItems = matchList
+          ? Array.from(matchList.children).filter((item) => item.classList.contains('nav-match-item'))
+          : [];
+        const visibleMatchItems = [];
+        const hiddenMatchItems = [];
+
+        matchItems.forEach((matchItem) => {{
+          const flowStatus = matchItem.getAttribute('data-flow-status') || '';
+          const visible = questionMatchesSearch && statusFilters.has(flowStatus);
+          matchItem.hidden = !visible;
+          if (visible) {{
+            visibleMatchItems.push(matchItem);
+          }} else {{
+            hiddenMatchItems.push(matchItem);
+          }}
+        }});
+
+        if (sortOrder !== 'default') {{
+          matchItems.sort((left, right) => {{
+            const leftRetry = Number.parseInt(left.getAttribute('data-retry-count') || '0', 10);
+            const rightRetry = Number.parseInt(right.getAttribute('data-retry-count') || '0', 10);
+            if (leftRetry !== rightRetry) {{
+              return sortOrder === 'retry-asc' ? leftRetry - rightRetry : rightRetry - leftRetry;
+            }}
+            const leftOrder = Number.parseInt(left.getAttribute('data-nav-order') || '0', 10);
+            const rightOrder = Number.parseInt(right.getAttribute('data-nav-order') || '0', 10);
+            return leftOrder - rightOrder;
+          }});
+        }}
+
+        if (matchList) {{
+          matchItems.forEach((item) => matchList.appendChild(item));
+        }}
+        questionItem.hidden = visibleMatchItems.length === 0;
+      }});
+
+      const hasVisibleItems = getVisibleMatchAnchors().length > 0;
+      if (emptyState) {{
+        emptyState.hidden = hasVisibleItems;
+      }}
+      ensureActiveMatchIsVisible();
+    }}
+
+    function bindNavigationControls() {{
+      navFilterState = loadNavFilterState();
+      syncNavigationControls();
+
+      const searchInput = document.getElementById('nav-search-input');
+      const sortSelect = document.getElementById('nav-sort-select');
+      const resetButton = document.getElementById('nav-reset-button');
+
+      if (searchInput) {{
+        searchInput.addEventListener('input', () => {{
+          navFilterState.searchText = searchInput.value;
+          saveNavFilterState();
+          applyNavigationFilters();
+        }});
+      }}
+      if (sortSelect) {{
+        sortSelect.addEventListener('change', () => {{
+          navFilterState.sortOrder = sortSelect.value || 'default';
+          saveNavFilterState();
+          applyNavigationFilters();
+        }});
+      }}
+      document.querySelectorAll('[data-status-filter]').forEach((button) => {{
+        button.addEventListener('click', () => {{
+          const statusFilters = new Set(navFilterState.statuses);
+          const status = button.getAttribute('data-status-filter') || '';
+          if (statusFilters.has(status)) {{
+            if (statusFilters.size === 1) {{
+              return;
+            }}
+            statusFilters.delete(status);
+          }} else {{
+            statusFilters.add(status);
+          }}
+          navFilterState.statuses = Array.from(statusFilters);
+          saveNavFilterState();
+          syncNavigationControls();
+          applyNavigationFilters();
+        }});
+      }});
+      if (resetButton) {{
+        resetButton.addEventListener('click', () => {{
+          navFilterState = getDefaultNavFilterState();
+          saveNavFilterState();
+          syncNavigationControls();
+          applyNavigationFilters();
+        }});
+      }}
     }}
 
     function applyDetailVisibility() {{
@@ -1860,6 +2162,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     function initializePage() {{
       initSettingsPanel();
+      bindNavigationControls();
       bindFlowZoomControls();
       bindFlowWheelZoom();
       bindFlowNodeEvents();
@@ -1871,6 +2174,7 @@ def render_html(report: dict[str, Any]) -> str:
       updateActiveNavLinks(initialAnchor);
       setActiveFlowView(initialAnchor);
       positionFlowZoomControls();
+      applyNavigationFilters();
       syncActivePanels();
       const detailPanelBody = document.getElementById('details-panel-body');
       if (detailPanelBody) {{
@@ -2930,6 +3234,51 @@ def _escape_data_attr(value: str) -> str:
     return escape(value, quote=True).replace("\n", "&#10;")
 
 
+def _render_nav_controls() -> str:
+    status_buttons = "".join(
+        (
+            f'<button type="button" class="nav-filter-button" data-status-filter="{status}" aria-pressed="true">'
+            f"{label}</button>"
+        )
+        for status, label in [
+            ("success", "成功"),
+            ("failed", "失败"),
+            ("unknown", "未知"),
+            ("reject", "拒答"),
+            ("follow_up", "追问"),
+        ]
+    )
+    return f"""
+    <div class="nav-controls">
+      <input id="nav-search-input" class="nav-search-input" type="search" placeholder="搜索问题关键字" />
+      <div class="nav-filter-row">
+        <div class="nav-filter-label">状态过滤</div>
+        <div class="nav-status-filters">{status_buttons}</div>
+      </div>
+      <div class="nav-filter-row">
+        <div class="nav-filter-label">重试排序</div>
+        <select id="nav-sort-select" class="nav-sort-select">
+          <option value="default">默认顺序</option>
+          <option value="retry-asc">重试次数升序</option>
+          <option value="retry-desc">重试次数降序</option>
+        </select>
+      </div>
+      <button id="nav-reset-button" class="nav-reset-button" type="button">清空条件</button>
+    </div>
+    """
+
+
+def _render_nav_match_item(anchor_id: str, match: dict[str, Any], question_anchor_id: str) -> str:
+    return (
+        f'<li class="nav-match-item" data-match-anchor="{escape(anchor_id)}" '
+        f'data-parent-question-anchor="{escape(question_anchor_id)}" '
+        f'data-flow-status="{escape(str(match.get("flow_status", "unknown")))}" '
+        f'data-retry-count="{int(match.get("retry_count", 0) or 0)}" '
+        f'data-nav-order="{int(match.get("index", 0) or 0)}">'
+        f"{_render_nav_match_link(anchor_id, match, question_anchor_id)}</li>"
+    )
+
+
 def _render_nav_match_link(anchor_id: str, match: dict[str, Any], question_anchor_id: str) -> str:
     status = match.get("flow_status", "success")
     if status == "success":
@@ -2949,6 +3298,9 @@ def _render_nav_match_link(anchor_id: str, match: dict[str, Any], question_ancho
         status_class = "nav-status-unknown"
     return (
         f'<a class="nav-match-link" data-parent-question-anchor="{escape(question_anchor_id)}" '
+        f'data-match-anchor="{escape(anchor_id)}" '
+        f'data-flow-status="{escape(str(status))}" '
+        f'data-retry-count="{int(match.get("retry_count", 0) or 0)}" '
         f'href="#{escape(anchor_id)}">'
         f'<span class="nav-status {status_class}">'
         f'<span class="nav-status-icon">{icon}</span>'
