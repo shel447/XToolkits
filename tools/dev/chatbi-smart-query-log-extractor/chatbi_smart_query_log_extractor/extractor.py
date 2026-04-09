@@ -651,6 +651,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "reject": _extract_matching_lines(preprocess_entries, REJECT_KNOWLEDGE_KEYWORD),
         "follow_up": _extract_matching_lines(preprocess_entries, FOLLOW_UP_KNOWLEDGE_KEYWORD),
     }
+    preprocess_knowledge_counts = _build_preprocess_knowledge_counts(preprocess_knowledge)
 
     verifier_failures = [
         _extract_after_keyword(entry["line"], VERIFIER_FAIL_KEYWORD)
@@ -756,6 +757,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "preprocess_rewritten_question": preprocess_info["rewritten_question"],
         "preprocess_decision": preprocess_decision,
         "preprocess_knowledge": preprocess_knowledge,
+        "preprocess_knowledge_counts": preprocess_knowledge_counts,
         "mask_question": mask_question,
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
@@ -795,6 +797,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "reject": _extract_matching_lines(root_entries, REJECT_KNOWLEDGE_KEYWORD),
         "follow_up": _extract_matching_lines(root_entries, FOLLOW_UP_KNOWLEDGE_KEYWORD),
     }
+    preprocess_knowledge_counts = _build_preprocess_knowledge_counts(preprocess_knowledge)
     verifier_failures = [
         _extract_after_keyword(entry["line"], VERIFIER_FAIL_KEYWORD)
         for entry in log_entries
@@ -899,6 +902,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "preprocess_rewritten_question": preprocess_info["rewritten_question"],
         "preprocess_decision": preprocess_decision,
         "preprocess_knowledge": preprocess_knowledge,
+        "preprocess_knowledge_counts": preprocess_knowledge_counts,
         "mask_question": mask_question,
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
@@ -1221,6 +1225,33 @@ def _build_sql_knowledge_counts(
         "global": generation_global + few_shot_global,
         "sql_generation": generation_scope,
         "sql_gen_few_shot": few_shot_scope,
+    }
+
+
+def _build_preprocess_knowledge_counts(preprocess_knowledge: dict[str, Any]) -> dict[str, int]:
+    if not isinstance(preprocess_knowledge, dict):
+        return {
+            "global": 0,
+            "intention_rewrite": 0,
+            "intention_reject": 0,
+            "intention_follow_up": 0,
+        }
+
+    rewrite_bundle = preprocess_knowledge.get("rewrite", {})
+    if not isinstance(rewrite_bundle, dict):
+        rewrite_bundle = {}
+
+    return {
+        "global": _count_recommends_in_result_text(str(rewrite_bundle.get("global_result", ""))),
+        "intention_rewrite": _count_recommends_in_result_text(str(rewrite_bundle.get("scope_result", ""))),
+        "intention_reject": sum(
+            _count_recommends_in_result_text(str(item))
+            for item in preprocess_knowledge.get("reject", [])
+        ),
+        "intention_follow_up": sum(
+            _count_recommends_in_result_text(str(item))
+            for item in preprocess_knowledge.get("follow_up", [])
+        ),
     }
 
 

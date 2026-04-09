@@ -370,6 +370,8 @@ def render_html(report: dict[str, Any]) -> str:
       min-width: 0;
     }}
     .flow-stage {{
+      display: grid;
+      gap: 8px;
       min-width: 0;
     }}
     .flow-stage[hidden] {{
@@ -380,20 +382,60 @@ def render_html(report: dict[str, Any]) -> str:
       padding: 0;
       overflow: visible;
     }}
+    .flow-stage-toolbar {{
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 6px;
+    }}
+    .flow-stage-controls {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border: 1px solid #d9e2ef;
+      border-radius: 999px;
+      background: #f8fbff;
+    }}
+    .flow-zoom-button {{
+      border: 1px solid #c8d5e6;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #29425b;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 5px 9px;
+      cursor: pointer;
+    }}
+    .flow-zoom-button:hover {{
+      background: #eef5ff;
+    }}
+    .flow-zoom-value {{
+      min-width: 40px;
+      text-align: center;
+      color: #51667f;
+      font-size: 11px;
+      font-weight: 700;
+    }}
+    .flow-stage-canvas {{
+      zoom: 0.82;
+      transform-origin: top center;
+    }}
     .flow-view {{
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }}
     .flow-view[hidden] {{
       display: none;
     }}
     .flow-view-title {{
-      padding: 6px 8px;
+      padding: 5px 8px;
       border: 1px solid #dce5f2;
       border-radius: 12px;
       background: #f8fbff;
       color: #334a67;
-      font-size: 11px;
+      font-size: 10px;
       line-height: 1.45;
     }}
     .flow-svg-wrap {{
@@ -401,7 +443,7 @@ def render_html(report: dict[str, Any]) -> str:
       border: 1px solid #d9e2ef;
       border-radius: 16px;
       background: #ffffff;
-      padding: 6px 6px 10px;
+      padding: 4px 4px 8px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }}
     .flow-svg {{
@@ -411,11 +453,6 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .flow-svg .flow-edge-label {{
       pointer-events: none;
-    }}
-    .flow-svg .flow-edge-label-bg {{
-      fill: rgba(255, 255, 255, 0.98);
-      stroke: #d4dce8;
-      stroke-width: 1;
     }}
     .flow-svg .flow-edge-label-text {{
       fill: #41566f;
@@ -1141,9 +1178,15 @@ def render_html(report: dict[str, Any]) -> str:
       {{ key: 'parse_errors', label: '解析错误' }},
     ];
     const DETAIL_FIELD_STORAGE_KEY = 'chatbi_report_detail_fields_v1';
+    const FLOW_ZOOM_STORAGE_KEY = 'chatbi_report_flow_zoom_v1';
+    const FLOW_ZOOM_DEFAULT = 0.82;
+    const FLOW_ZOOM_MIN = 0.55;
+    const FLOW_ZOOM_MAX = 1.2;
+    const FLOW_ZOOM_STEP = 0.05;
     let detailFieldVisibility = {{}};
     let navSyncTicking = false;
     let activeContentTab = 'flow';
+    let flowZoom = FLOW_ZOOM_DEFAULT;
 
     function getDefaultDetailVisibility() {{
       const defaults = {{}};
@@ -1180,6 +1223,64 @@ def render_html(report: dict[str, Any]) -> str:
       try {{
         window.localStorage.setItem(DETAIL_FIELD_STORAGE_KEY, JSON.stringify(detailFieldVisibility));
       }} catch (error) {{
+      }}
+    }}
+
+    function clampFlowZoom(value) {{
+      return Math.min(FLOW_ZOOM_MAX, Math.max(FLOW_ZOOM_MIN, value));
+    }}
+
+    function loadFlowZoom() {{
+      try {{
+        const raw = window.localStorage.getItem(FLOW_ZOOM_STORAGE_KEY);
+        if (!raw) {{
+          return FLOW_ZOOM_DEFAULT;
+        }}
+        const parsed = Number.parseFloat(raw);
+        return Number.isFinite(parsed) ? clampFlowZoom(parsed) : FLOW_ZOOM_DEFAULT;
+      }} catch (error) {{
+        return FLOW_ZOOM_DEFAULT;
+      }}
+    }}
+
+    function saveFlowZoom() {{
+      try {{
+        window.localStorage.setItem(FLOW_ZOOM_STORAGE_KEY, String(flowZoom));
+      }} catch (error) {{
+      }}
+    }}
+
+    function applyFlowZoom() {{
+      const canvas = document.getElementById('flow-stage-canvas');
+      const value = document.getElementById('flow-zoom-value');
+      if (canvas) {{
+        canvas.style.zoom = String(flowZoom);
+      }}
+      if (value) {{
+        value.textContent = `${{Math.round(flowZoom * 100)}}%`;
+      }}
+    }}
+
+    function setFlowZoom(nextZoom) {{
+      flowZoom = clampFlowZoom(nextZoom);
+      applyFlowZoom();
+      saveFlowZoom();
+    }}
+
+    function bindFlowZoomControls() {{
+      flowZoom = loadFlowZoom();
+      applyFlowZoom();
+      const zoomOut = document.getElementById('flow-zoom-out');
+      const zoomIn = document.getElementById('flow-zoom-in');
+      const zoomReset = document.getElementById('flow-zoom-reset');
+      if (zoomOut) {{
+        zoomOut.addEventListener('click', () => setFlowZoom(flowZoom - FLOW_ZOOM_STEP));
+      }}
+      if (zoomIn) {{
+        zoomIn.addEventListener('click', () => setFlowZoom(flowZoom + FLOW_ZOOM_STEP));
+      }}
+      if (zoomReset) {{
+        zoomReset.addEventListener('click', () => setFlowZoom(1));
       }}
     }}
 
@@ -1628,6 +1729,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     function initializePage() {{
       initSettingsPanel();
+      bindFlowZoomControls();
       bindFlowNodeEvents();
       bindContentTabs();
       bindNavLinkBehavior();
@@ -1772,8 +1874,18 @@ def _render_flow_stage(flow_views_html: str, active_flow_anchor: str) -> str:
         """
     return f"""
     <section id="flow-stage" class="flow-stage" data-active-match-anchor="{escape(active_flow_anchor)}">
+      <div class="flow-stage-toolbar">
+        <div id="flow-zoom-controls" class="flow-stage-controls" aria-label="流程图缩放">
+          <button id="flow-zoom-out" class="flow-zoom-button" type="button" title="缩小">-</button>
+          <span id="flow-zoom-value" class="flow-zoom-value">82%</span>
+          <button id="flow-zoom-reset" class="flow-zoom-button" type="button" title="重置">1:1</button>
+          <button id="flow-zoom-in" class="flow-zoom-button" type="button" title="放大">+</button>
+        </div>
+      </div>
       <div id="flow-stage-body" class="flow-stage-body">
-        {flow_views_html}
+        <div id="flow-stage-canvas" class="flow-stage-canvas">
+          {flow_views_html}
+        </div>
         <div id="flow-tooltip-popup" class="flow-tooltip-popup" hidden>
           <div id="flow-tooltip-title" class="flow-tooltip-title"></div>
           <pre id="flow-tooltip-content"></pre>
@@ -1801,9 +1913,9 @@ def _render_flow_view(anchor_id: str, match: dict[str, Any], active: bool) -> st
 def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str, str]]) -> str:
     center_x = 372
     width = 760
-    top_padding = 48
-    step = 102
-    height = top_padding * 2 + step * (len(nodes) - 1) + 92
+    top_padding = 40
+    step = 92
+    height = top_padding * 2 + step * (len(nodes) - 1) + 78
     positions = {
         node["key"]: {"cx": center_x, "cy": top_padding + index * step}
         for index, node in enumerate(nodes)
@@ -1900,7 +2012,7 @@ def _render_flow_connectors(
     main_pairs = [
         ("start", "ac_enriched_question", ""),
         ("ac_enriched_question", "preprocess_knowledge", _short_edge_text(str(match.get("ac_enriched_question", "")).strip(), 18)),
-        ("preprocess_knowledge", "preprocess_decision", ""),
+        ("preprocess_knowledge", "preprocess_decision", _compose_preprocess_knowledge_edge_label(match)),
         ("mask_question", "sql_knowledge", _short_edge_text(str(match.get("mask_question", "")).strip(), 18)),
         ("sql_knowledge", "sql_rewrite", _compose_sql_knowledge_edge_label(match)),
         ("sql_rewrite", "recalled_tables", _compose_sql_rewrite_edge_label(match)),
@@ -2067,10 +2179,8 @@ def _render_connector_path(path: str, status_class: str, label: str, label_x: fl
 
 def _render_edge_label(label: str, x: float, y: float) -> str:
     label_text = escape(label)
-    width = max(44, min(340, 14 + len(label) * 8))
     return (
         f'<g class="flow-edge-label" transform="translate({x:.0f},{y:.0f})">'
-        f'<rect class="flow-edge-label-bg" x="{-width / 2:.0f}" y="-12" width="{width:.0f}" height="24" rx="7" ry="7"></rect>'
         f'<text class="flow-edge-label-text" x="0" y="1">{label_text}</text>'
         f"</g>"
     )
@@ -2092,10 +2202,10 @@ def _resolve_linear_connector_status(
 
 def _get_flow_node_size(node_type: str) -> tuple[int, int]:
     if node_type in {"start", "end"}:
-        return (188, 50)
+        return (172, 44)
     if node_type == "decision":
-        return (196, 74)
-    return (206, 58)
+        return (180, 68)
+    return (190, 52)
 
 
 def _flow_node_top(center_y: float, node_type: str) -> float:
@@ -2130,6 +2240,20 @@ def _compose_data_query_edge_label(match: dict[str, Any]) -> str:
     if rewritten:
         return f"{base} {rewritten}"
     return base
+
+
+def _compose_preprocess_knowledge_edge_label(match: dict[str, Any]) -> str:
+    counts = match.get("preprocess_knowledge_counts", {})
+    if not isinstance(counts, dict):
+        return ""
+    global_count = int(counts.get("global", 0) or 0)
+    intention_rewrite_count = int(counts.get("intention_rewrite", 0) or 0)
+    intention_reject_count = int(counts.get("intention_reject", 0) or 0)
+    intention_follow_up_count = int(counts.get("intention_follow_up", 0) or 0)
+    return (
+        f"Global {global_count} / IntentionRewrite {intention_rewrite_count} / "
+        f"IntentionReject {intention_reject_count} / IntentionFollowUp {intention_follow_up_count}"
+    )
 
 
 def _compose_sql_knowledge_edge_label(match: dict[str, Any]) -> str:

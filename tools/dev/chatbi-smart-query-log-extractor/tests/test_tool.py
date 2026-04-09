@@ -147,11 +147,11 @@ tables = get_tables_columns(table_exprs)
 
 TERMINATED_PREPROCESS_LOG = """2026-04-08 11:00:00.001 [INFO] [811111111111112] sql_template_match hit query: 拒答问题
 2026-04-08 11:00:00.002 [INFO] [811111111111112] question after ac: 拒答AC问题
-2026-04-08 11:00:00.003 [INFO] [811111111111112] load klg for KlgScope.INTENTION_REJECT: reject knowledge
+2026-04-08 11:00:00.003 [INFO] [811111111111112] load klg for KlgScope.INTENTION_REJECT: {'recommends': [{'id': 'reject1'}, {'id': 'reject2'}]}
 2026-04-08 11:00:00.004 [INFO] [811111111111112] react chat llm chient res {"type":"RejectRequest","query_intent": "拒答改写"}
 2026-04-08 11:01:00.001 [INFO] [822222222222223] sql_template_match hit query: 追问问题
 2026-04-08 11:01:00.002 [INFO] [822222222222223] question after ac: 追问AC问题
-2026-04-08 11:01:00.003 [INFO] [822222222222223] load klg for KlgScope.INTENTION_FOLLOW_UP: follow knowledge
+2026-04-08 11:01:00.003 [INFO] [822222222222223] load klg for KlgScope.INTENTION_FOLLOW_UP: {'recommends': [{'id': 'follow1'}]}
 2026-04-08 11:01:00.004 [INFO] [822222222222223] react chat llm chient res {"type":"AskHuman","query_intent": "追问改写"}
 """
 
@@ -494,6 +494,15 @@ class ExtractorTests(unittest.TestCase):
             match["preprocess_knowledge"]["rewrite"]["scope_result"],
             "{'recommends': [{'id': 'pr1'}, {'id': 'pr2'}]}",
         )
+        self.assertEqual(
+            match["preprocess_knowledge_counts"],
+            {
+                "global": 1,
+                "intention_rewrite": 2,
+                "intention_reject": 0,
+                "intention_follow_up": 0,
+            },
+        )
         self.assertEqual(match["mask_question"], "标准化问题")
         self.assertEqual(
             match["sql_generation_knowledge"]["scope_result"],
@@ -526,7 +535,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(reject_match["flow_status"], "reject")
         self.assertTrue(reject_match["terminated_at_preprocess"])
         self.assertEqual(reject_match["preprocess_rewritten_question"], "拒答改写")
-        self.assertEqual(reject_match["preprocess_knowledge"]["reject"], ["reject knowledge"])
+        self.assertEqual(reject_match["preprocess_knowledge"]["reject"], ["{'recommends': [{'id': 'reject1'}, {'id': 'reject2'}]}"])
+        self.assertEqual(reject_match["preprocess_knowledge_counts"]["intention_reject"], 2)
         self.assertIn("complete_ir", reject_match["skipped_sections"])
         self.assertNotIn("complete_ir", reject_match["missing_sections"])
         self.assertEqual(reject_match["complete_ir"], "")
@@ -535,7 +545,8 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(follow_match["flow_status"], "follow_up")
         self.assertTrue(follow_match["terminated_at_preprocess"])
         self.assertEqual(follow_match["preprocess_rewritten_question"], "追问改写")
-        self.assertEqual(follow_match["preprocess_knowledge"]["follow_up"], ["follow knowledge"])
+        self.assertEqual(follow_match["preprocess_knowledge"]["follow_up"], ["{'recommends': [{'id': 'follow1'}]}"])
+        self.assertEqual(follow_match["preprocess_knowledge_counts"]["intention_follow_up"], 1)
         self.assertIn("generated_ir", follow_match["skipped_sections"])
         self.assertNotIn("generated_ir", follow_match["missing_sections"])
 
@@ -557,12 +568,12 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn(">拒答<", html)
         self.assertIn(">追问<", html)
         self.assertIn(">问数 预处理改写问题<", html)
+        self.assertIn(">Global 1 / IntentionRewrite 2 / IntentionReject 0 / IntentionFollowUp 0<", html)
         self.assertIn(">SQL改写后的问题<", html)
         self.assertIn(">Global 5 / SQLGeneration 1 / SQLGenFewShot 2<", html)
         self.assertIn('title="复制提示词 JSON"', html)
         self.assertIn('title="复制改写问题"', html)
         self.assertRegex(html, r'data-copy-target="sql-rewrite-question-\d+-match-\d+-prompt-json"')
-        self.assertIn(">问数 预处理改写问题<", html)
 
     def test_render_html_shows_navigation_prompt_and_missing_markers(self) -> None:
         report = extract_report((FIXTURES_ROOT / "complex_chatbi.log").read_text(encoding="utf-8"), "complex_chatbi.log")
@@ -596,6 +607,12 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('class="content-panel-body"', html)
         self.assertIn('id="flow-panel-body"', html)
         self.assertIn('id="flow-stage"', html)
+        self.assertIn('id="flow-zoom-controls"', html)
+        self.assertIn('id="flow-zoom-out"', html)
+        self.assertIn('id="flow-zoom-reset"', html)
+        self.assertIn('id="flow-zoom-in"', html)
+        self.assertIn('id="flow-stage-canvas"', html)
+        self.assertIn('zoom: 0.82;', html)
         self.assertIn('class="flow-stage"', html)
         self.assertIn('class="flow-stage-body"', html)
         self.assertNotIn('class="flow-stage-shell"', html)
@@ -605,6 +622,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertIn('class="flow-svg"', html)
         self.assertIn('class="flow-group"', html)
         self.assertIn('class="flow-group-box"', html)
+        self.assertNotIn('flow-edge-label-bg', html)
         self.assertIn(">意图识别<", html)
         self.assertIn(">Text2Data-SQL生成<", html)
         self.assertIn('data-flow-match-anchor="question-1-match-1"', html)
