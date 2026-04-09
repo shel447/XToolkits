@@ -1332,6 +1332,26 @@ def render_html(report: dict[str, Any]) -> str:
       }}
     }}
 
+    function positionFlowZoomControls() {{
+      const controls = document.getElementById('flow-zoom-controls');
+      const flowStage = document.getElementById('flow-stage');
+      if (!controls || !flowStage) {{
+        return;
+      }}
+      const activeAnchor = flowStage.getAttribute('data-active-match-anchor') || '';
+      let activeWrap = null;
+      if (activeAnchor) {{
+        const escapedAnchor = CSS.escape(activeAnchor);
+        activeWrap = document.querySelector(`.flow-view[data-flow-match-anchor="${{escapedAnchor}}"]:not([hidden]) .flow-svg-wrap`);
+      }}
+      if (!activeWrap) {{
+        activeWrap = document.querySelector('.flow-view:not([hidden]) .flow-svg-wrap');
+      }}
+      if (activeWrap instanceof HTMLElement && controls.parentElement !== activeWrap) {{
+        activeWrap.appendChild(controls);
+      }}
+    }}
+
     function bindFlowWheelZoom() {{
       const flowPanelBody = document.getElementById('flow-panel-body');
       if (!flowPanelBody) {{
@@ -1341,7 +1361,9 @@ def render_html(report: dict[str, Any]) -> str:
         if (activeContentTab !== 'flow') {{
           return;
         }}
-        if (!(event.ctrlKey || event.metaKey)) {{
+        const target = event.target;
+        const insideFlowWrap = target instanceof Element && Boolean(target.closest('.flow-svg-wrap'));
+        if (!(event.ctrlKey || event.metaKey || insideFlowWrap)) {{
           return;
         }}
         event.preventDefault();
@@ -1603,7 +1625,9 @@ def render_html(report: dict[str, Any]) -> str:
           resetFlowBoundarySwitchIntent();
           return;
         }}
-        if (event.ctrlKey || event.metaKey) {{
+        const target = event.target;
+        const insideFlowWrap = target instanceof Element && Boolean(target.closest('.flow-svg-wrap'));
+        if (event.ctrlKey || event.metaKey || insideFlowWrap) {{
           resetFlowBoundarySwitchIntent();
           return;
         }}
@@ -1821,6 +1845,7 @@ def render_html(report: dict[str, Any]) -> str:
           flowPanelBody.scrollTop = 0;
         }}
       }}
+      positionFlowZoomControls();
       closeOpenFlowTooltips();
     }}
 
@@ -1849,6 +1874,7 @@ def render_html(report: dict[str, Any]) -> str:
       setActiveContentTab(detailFieldVisibility.flow_diagram !== false ? 'flow' : 'details');
       updateActiveNavLinks(initialAnchor);
       setActiveFlowView(initialAnchor);
+      positionFlowZoomControls();
       syncActivePanels();
       const detailPanelBody = document.getElementById('details-panel-body');
       if (detailPanelBody) {{
@@ -2032,16 +2058,17 @@ def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str
     node_parts = []
     connector_parts = []
     node_lookup = {node["key"]: node for node in nodes}
+    marker_id = f"flow-arrow-head-{anchor_id}"
 
     connector_parts.extend(_render_flow_groups(positions))
-    connector_parts.extend(_render_flow_connectors(anchor_id, match, nodes, positions, node_lookup))
+    connector_parts.extend(_render_flow_connectors(anchor_id, match, nodes, positions, node_lookup, marker_id))
     for node in nodes:
         node_parts.append(_render_svg_flow_node(anchor_id, node, positions[node["key"]]["cx"], positions[node["key"]]["cy"]))
 
     return f"""
     <svg class="flow-svg" viewBox="0 0 {width} {height}" role="img" aria-label="调用流程图">
       <defs>
-        <marker id="flow-arrow-head" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
+        <marker id="{escape(marker_id)}" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
           <polygon points="0 0, 7 3.5, 0 7" fill="context-stroke"></polygon>
         </marker>
       </defs>
@@ -2117,6 +2144,7 @@ def _render_flow_connectors(
     nodes: list[dict[str, str]],
     positions: dict[str, dict[str, int]],
     node_lookup: dict[str, dict[str, str]],
+    marker_id: str,
 ) -> list[str]:
     connectors: list[str] = []
     main_pairs = [
@@ -2141,6 +2169,7 @@ def _render_flow_connectors(
                 positions[from_key]["cx"],
                 _flow_node_bottom(positions[from_key]["cy"], node_lookup[from_key]["type"]),
                 _flow_node_top(positions[to_key]["cy"], node_lookup[to_key]["type"]),
+                marker_id,
                 status_class,
                 label,
             )
@@ -2155,6 +2184,7 @@ def _render_flow_connectors(
             positions["preprocess_decision"]["cx"],
             _flow_node_bottom(positions["preprocess_decision"]["cy"], node_lookup["preprocess_decision"]["type"]),
             _flow_node_top(positions["mask_question"]["cy"], node_lookup["mask_question"]["type"]),
+            marker_id,
             "active" if data_query_active else "unknown",
             _compose_data_query_edge_label(match) if data_query_active else "问数",
         )
@@ -2171,6 +2201,7 @@ def _render_flow_connectors(
                 (positions["end"]["cx"] + 94, positions["end"]["cy"] - 40),
                 (positions["end"]["cx"] + 94, positions["end"]["cy"] - 10),
             ],
+            marker_id,
             "active" if reject_active else "unknown",
             "拒答",
             label_x=654,
@@ -2189,6 +2220,7 @@ def _render_flow_connectors(
                 (positions["end"]["cx"] + 98, positions["end"]["cy"] + 8),
                 (positions["end"]["cx"] + 98, positions["end"]["cy"]),
             ],
+            marker_id,
             "active" if follow_up_active else "unknown",
             "追问",
             label_x=672,
@@ -2212,6 +2244,7 @@ def _render_flow_connectors(
                         positions["generated_ir"]["cy"],
                     ),
                 ],
+                marker_id,
                 "active" if retry_count > 0 else "unknown",
                 f"编译失败重试 {retry_count} 次" if retry_count > 0 else "",
                 label_x=142,
@@ -2225,6 +2258,7 @@ def _render_flow_connectors(
             positions["data2chart"]["cx"],
             _flow_node_bottom(positions["data2chart"]["cy"], node_lookup["data2chart"]["type"]),
             _flow_node_top(positions["end"]["cy"], node_lookup["end"]["type"]),
+            marker_id,
             "active" if flow_status == "success" else "unknown",
             _short_edge_text(_extract_sql_summary(match), 24) if flow_status == "success" else "",
         )
@@ -2241,6 +2275,7 @@ def _render_flow_connectors(
                 (positions["end"]["cx"] + 94, positions["end"]["cy"] - 34),
                 (positions["end"]["cx"] + 94, positions["end"]["cy"]),
             ],
+            marker_id,
             "active" if flow_status == "failed" else "unknown",
             "最终失败",
             label_x=658,
@@ -2251,13 +2286,21 @@ def _render_flow_connectors(
     return connectors
 
 
-def _render_vertical_connector(center_x: int, start_y: float, end_y: float, status_class: str, label: str = "") -> str:
+def _render_vertical_connector(
+    center_x: int,
+    start_y: float,
+    end_y: float,
+    marker_id: str,
+    status_class: str,
+    label: str = "",
+) -> str:
     path = f"M {center_x} {start_y:.0f} L {center_x} {end_y:.0f}"
-    return _render_connector_path(path, status_class, label, center_x + 68, (start_y + end_y) / 2 if label else None)
+    return _render_connector_path(path, marker_id, status_class, label, center_x + 68, (start_y + end_y) / 2 if label else None)
 
 
 def _render_routed_connector(
     points: list[tuple[float, float]],
+    marker_id: str,
     status_class: str,
     label: str = "",
     *,
@@ -2269,10 +2312,17 @@ def _render_routed_connector(
     classes = status_class
     if loop:
         classes = f"{classes} loop".strip()
-    return _render_connector_path(path, classes, label, label_x, label_y)
+    return _render_connector_path(path, marker_id, classes, label, label_x, label_y)
 
 
-def _render_connector_path(path: str, status_class: str, label: str, label_x: float | None, label_y: float | None) -> str:
+def _render_connector_path(
+    path: str,
+    marker_id: str,
+    status_class: str,
+    label: str,
+    label_x: float | None,
+    label_y: float | None,
+) -> str:
     class_names = ["flow-connector-line"]
     normalized = status_class.strip()
     if normalized:
@@ -2285,7 +2335,7 @@ def _render_connector_path(path: str, status_class: str, label: str, label_x: fl
     if label and label_x is not None and label_y is not None:
         label_html = _render_edge_label(label, label_x, label_y)
     return (
-        f'<g><path class="{" ".join(class_names)}" marker-end="url(#flow-arrow-head)" d="{path}"></path>'
+        f'<g><path class="{" ".join(class_names)}" marker-end="url(#{escape(marker_id)})" d="{path}"></path>'
         f"{label_html}</g>"
     )
 
