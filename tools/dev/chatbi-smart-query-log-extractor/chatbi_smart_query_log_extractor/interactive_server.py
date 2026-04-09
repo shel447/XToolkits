@@ -318,19 +318,14 @@ def _render_service_page(has_report: bool) -> str:
       width: 100%;
       padding: 8px 10px;
       display: grid;
-      gap: 8px;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
       min-height: 100vh;
     }}
-    .page-shell {{
+    .left-rail {{
       display: grid;
-      justify-items: start;
       gap: 8px;
-      width: 100%;
-    }}
-    .page-main {{
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      width: 100%;
       min-width: 0;
     }}
     .panel {{
@@ -346,9 +341,8 @@ def _render_service_page(has_report: bool) -> str:
     }}
     .service-toolbar {{
       width: fit-content;
-      max-width: min(100%, 760px);
+      max-width: 100%;
       padding: 8px 10px;
-      justify-self: start;
     }}
     .service-toolbar h1 {{
       margin: 0;
@@ -389,21 +383,18 @@ def _render_service_page(has_report: bool) -> str:
     .picker-input {{
       display: none;
     }}
-    .layout {{
-      display: grid;
-      grid-template-columns: 260px minmax(0, 1fr);
-      gap: 10px;
-      align-items: start;
+    .file-panel {{
+      min-width: 0;
     }}
     .result-panel {{
       display: grid;
       grid-template-rows: auto 1fr;
-      min-height: calc(100vh - 104px);
+      min-height: calc(100vh - 16px);
     }}
     .file-list {{
       display: grid;
       gap: 8px;
-      max-height: calc(100vh - 190px);
+      max-height: calc(100vh - 170px);
       overflow: auto;
     }}
     .file-item {{
@@ -440,7 +431,7 @@ def _render_service_page(has_report: bool) -> str:
       background: #ffffff;
     }}
     @media (max-width: 1080px) {{
-      .layout {{
+      .page {{
         grid-template-columns: 1fr;
       }}
       .result-panel {{
@@ -455,7 +446,7 @@ def _render_service_page(has_report: bool) -> str:
 </head>
 <body>
   <div class="page">
-    <div class="page-shell">
+    <aside class="left-rail">
       <section class="panel service-toolbar">
         <h1>ChatBI 日志浏览服务</h1>
         <div class="service-desc">固定单端口运行，支持选择日志文件或日志目录后逐个解析。</div>
@@ -467,21 +458,17 @@ def _render_service_page(has_report: bool) -> str:
         </div>
         <div id="service-status" class="status">{initial_status}</div>
       </section>
-      <div class="page-main">
-        <div class="layout">
-          <section class="panel">
-            <h2>已选日志文件</h2>
-            <div id="selected-files" class="file-list">
-              <div class="status">暂无文件</div>
-            </div>
-          </section>
-          <section class="panel result-panel">
-            <h2>解析结果</h2>
-            <iframe id="report-frame" class="report-frame" src="{initial_src}" title="解析结果"></iframe>
-          </section>
+      <section class="panel file-panel">
+        <h2>已选日志文件</h2>
+        <div id="selected-files" class="file-list">
+          <div class="status">暂无文件</div>
         </div>
-      </div>
-    </div>
+      </section>
+    </aside>
+    <section class="panel result-panel">
+      <h2>解析结果</h2>
+      <iframe id="report-frame" class="report-frame" src="{initial_src}" title="解析结果"></iframe>
+    </section>
   </div>
   <script>
     let selectedFiles = [];

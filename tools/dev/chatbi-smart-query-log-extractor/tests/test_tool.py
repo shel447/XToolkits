@@ -993,11 +993,9 @@ class ExtractorTests(unittest.TestCase):
             self.assertIn("/api/report", html)
             self.assertNotIn("max-width: 1600px;", html)
             self.assertIn("padding: 8px 10px;", html)
-            self.assertIn('class="page-shell"', html)
-            self.assertIn('class="page-main"', html)
+            self.assertIn('class="left-rail"', html)
             self.assertIn("grid-template-columns: 260px minmax(0, 1fr);", html)
-            self.assertIn("grid-template-columns: minmax(0, 1fr);", html)
-            self.assertIn("justify-self: start;", html)
+            self.assertIn("grid-template-rows: auto 1fr;", html)
             self.assertIn("width: fit-content;", html)
         finally:
             server.shutdown()
