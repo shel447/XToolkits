@@ -431,11 +431,13 @@ def _build_window_log_entries(lines: list[str], thread_id: str, start_line_numbe
     for offset, line in enumerate(lines):
         if not _line_has_thread_id(line, thread_id):
             continue
+        timestamp = _extract_timestamp(line)
         entries.append(
             {
                 "line_number": start_line_number + offset,
                 "thread_id": thread_id,
                 "line": line,
+                "timestamp": timestamp or "",
             }
         )
     return entries
@@ -723,6 +725,13 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         if terminated_at_preprocess
         else _extract_sql_rewrite(log_entries)
     )
+    step_timings = _build_step_timings(
+        anchor_timestamp=anchor["anchor_timestamp"],
+        root_entries=preprocess_entries,
+        log_entries=log_entries,
+        preprocess_decision=preprocess_decision,
+        flow_status=flow_status,
+    )
     rewritten_question = sql_rewritten_question
 
     missing_sections: list[str] = []
@@ -762,6 +771,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "preprocess_decision": preprocess_decision,
         "preprocess_knowledge": preprocess_knowledge,
         "preprocess_knowledge_counts": preprocess_knowledge_counts,
+        "step_timings": step_timings,
         "mask_question": mask_question,
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
@@ -869,6 +879,13 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         if terminated_at_preprocess
         else _extract_sql_rewrite(log_entries)
     )
+    step_timings = _build_step_timings(
+        anchor_timestamp=raw_match["anchor_timestamp"],
+        root_entries=root_entries,
+        log_entries=log_entries,
+        preprocess_decision=preprocess_decision,
+        flow_status=flow_status,
+    )
 
     rewritten_question = sql_rewritten_question or (raw_match["rewrite_questions"][0] if raw_match["rewrite_questions"] else "")
 
@@ -910,6 +927,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "preprocess_decision": preprocess_decision,
         "preprocess_knowledge": preprocess_knowledge,
         "preprocess_knowledge_counts": preprocess_knowledge_counts,
+        "step_timings": step_timings,
         "mask_question": mask_question,
         "sql_generation_knowledge": sql_generation_knowledge,
         "few_shot_knowledge": few_shot_knowledge,
@@ -961,7 +979,14 @@ def _collect_segment_log_entries(segment_views: list[dict[str, Any]]) -> list[di
             line_number = segment_view["start_line_number"] + offset
             if not _line_has_thread_id(line, thread_id):
                 continue
-            entries.append({"line_number": line_number, "thread_id": thread_id, "line": line})
+            entries.append(
+                {
+                    "line_number": line_number,
+                    "thread_id": thread_id,
+                    "line": line,
+                    "timestamp": _extract_timestamp(line) or "",
+                }
+            )
     entries.sort(key=lambda item: item["line_number"])
     return entries
 
@@ -1204,6 +1229,140 @@ def _extract_after_keyword(line: str, keyword: str) -> str:
     return remainder.lstrip(" ：:").strip()
 
 
+def _build_step_timings(
+    anchor_timestamp: str,
+    root_entries: list[dict[str, Any]],
+    log_entries: list[dict[str, Any]],
+    preprocess_decision: str,
+    flow_status: str,
+) -> dict[str, dict[str, Any]]:
+    anchor_dt = _parse_timestamp_value(anchor_timestamp)
+    if anchor_dt is None:
+        return {}
+
+    preprocess_boundary_entries = _entries_before_keyword(root_entries, CALL_SQLFLOW_INPUT_KEYWORD)
+    step_timestamps = {
+        "start": anchor_timestamp,
+        "ac_enriched_question": _find_last_entry_timestamp(preprocess_boundary_entries, lambda entry: AC_QUESTION_KEYWORD in entry["line"]),
+        "preprocess_knowledge": _find_last_entry_timestamp(
+            preprocess_boundary_entries,
+            lambda entry: (
+                RAG_KEYWORD in entry["line"]
+                or REJECT_KNOWLEDGE_KEYWORD in entry["line"]
+                or FOLLOW_UP_KNOWLEDGE_KEYWORD in entry["line"]
+            ),
+        ),
+        "preprocess_decision": _find_last_entry_timestamp(
+            preprocess_boundary_entries,
+            lambda entry: PREPROCESS_DECISION_KEYWORD in entry["line"],
+        ),
+        "mask_question": _find_last_entry_timestamp(log_entries, lambda entry: MASK_QUESTION_KEYWORD in entry["line"]),
+        "sql_knowledge": _max_timestamp_strings(
+            _find_last_knowledge_sequence_timestamp(log_entries, SQL_GENERATION_SCOPE),
+            _find_last_knowledge_sequence_timestamp(log_entries, FEW_SHOT_SCOPE),
+        ),
+        "sql_rewrite": _find_last_entry_timestamp(log_entries, lambda entry: REWRITE_KEYWORD in entry["line"]),
+        "recalled_tables": _find_last_entry_timestamp(
+            log_entries,
+            lambda entry: (
+                RECALL_KEYWORD in entry["line"]
+                or SCHEMA_KEYWORD in entry["line"]
+                or TABLE_MISSING_KEYWORD in entry["line"]
+            ),
+        ),
+        "final_prompt": _find_last_entry_timestamp(log_entries, lambda entry: PROMPT_KEYWORD in entry["line"]),
+        "generated_ir": _find_last_entry_timestamp(log_entries, lambda entry: IR_RESULT_START in entry["line"]),
+    }
+
+    verifier_timestamp = _max_timestamp_strings(
+        _find_last_entry_timestamp(log_entries, lambda entry: VERIFIER_FAIL_KEYWORD in entry["line"]),
+        _find_last_entry_timestamp(
+            log_entries,
+            lambda entry: FLOW_SUCCESS_KEYWORD in entry["line"] or FLOW_FAIL_KEYWORD in entry["line"],
+        ),
+    )
+    step_timestamps["verifier"] = verifier_timestamp
+    if flow_status in {REJECT_STATUS, FOLLOW_UP_STATUS}:
+        step_timestamps["end"] = step_timestamps["preprocess_decision"]
+    elif flow_status in {SUCCESS_STATUS, FAILED_STATUS}:
+        step_timestamps["end"] = _find_last_entry_timestamp(
+            log_entries,
+            lambda entry: FLOW_SUCCESS_KEYWORD in entry["line"] or FLOW_FAIL_KEYWORD in entry["line"],
+        )
+    else:
+        step_timestamps["end"] = ""
+
+    timings: dict[str, dict[str, Any]] = {}
+    for key, timestamp in step_timestamps.items():
+        step_dt = _parse_timestamp_value(timestamp)
+        if step_dt is None:
+            continue
+        elapsed_ms = max(0, int((step_dt - anchor_dt).total_seconds() * 1000))
+        timings[key] = {
+            "timestamp": timestamp,
+            "elapsed_ms": elapsed_ms,
+        }
+    return timings
+
+
+def _entries_before_keyword(entries: list[dict[str, Any]], keyword: str) -> list[dict[str, Any]]:
+    sliced: list[dict[str, Any]] = []
+    for entry in entries:
+        if keyword in entry["line"]:
+            break
+        sliced.append(entry)
+    return sliced
+
+
+def _find_last_entry_timestamp(entries: list[dict[str, Any]], predicate: Any) -> str:
+    last_timestamp = ""
+    for entry in entries:
+        if predicate(entry):
+            last_timestamp = str(entry.get("timestamp", "")).strip()
+    return last_timestamp
+
+
+def _find_last_knowledge_sequence_timestamp(entries: list[dict[str, Any]], scope_keyword: str) -> str:
+    thread_entries: dict[str, list[dict[str, Any]]] = {}
+    for entry in entries:
+        thread_entries.setdefault(entry["thread_id"], []).append(entry)
+
+    best_line_number = -1
+    best_timestamp = ""
+    for scoped_entries in thread_entries.values():
+        scoped_entries.sort(key=lambda item: item["line_number"])
+        pending_request_scope = ""
+        for entry in scoped_entries:
+            line = entry["line"]
+            if KNOWLEDGE_REQUEST_KEYWORD in line:
+                if "Global" in line:
+                    pending_request_scope = "global"
+                elif scope_keyword in line:
+                    pending_request_scope = "scope"
+                else:
+                    pending_request_scope = ""
+                continue
+            if pending_request_scope and RAG_KEYWORD in line:
+                if pending_request_scope == "scope" and entry["line_number"] > best_line_number:
+                    best_line_number = int(entry["line_number"])
+                    best_timestamp = str(entry.get("timestamp", "")).strip()
+                pending_request_scope = ""
+    return best_timestamp
+
+
+def _max_timestamp_strings(*timestamps: str) -> str:
+    best_dt = None
+    best_value = ""
+    for timestamp in timestamps:
+        parsed = _parse_timestamp_value(timestamp)
+        if parsed is None:
+            continue
+        if best_dt is None or parsed > best_dt:
+            best_dt = parsed
+            best_value = timestamp
+    return best_value
+
+
 def _count_recommends_in_result_text(result_text: str) -> int:
     text = str(result_text).strip()
     if not text:
@@ -1314,6 +1473,16 @@ def _extract_anchor_question(line: str) -> str | None:
 def _extract_timestamp(line: str) -> str | None:
     match = TIMESTAMP_RE.match(line)
     return match.group("ts") if match else None
+
+
+def _parse_timestamp_value(value: str) -> datetime | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        return None
 
 
 def _is_log_line(line: str) -> bool:

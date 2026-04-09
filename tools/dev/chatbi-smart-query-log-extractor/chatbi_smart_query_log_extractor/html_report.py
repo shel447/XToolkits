@@ -2405,6 +2405,7 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
 
 
 def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
+    step_timings = match.get("step_timings", {})
     preprocess_knowledge_text = _format_preprocess_knowledge_tooltip(match.get("preprocess_knowledge", {}))
     sql_knowledge_text = _format_sql_knowledge_tooltip(match.get("sql_knowledge", {}))
     sql_rewrite_text = _format_sql_rewrite_tooltip(match)
@@ -2555,14 +2556,18 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 status = "unknown"
 
         detail = details.get(key, "").strip()
+        timing_info = _format_step_timing_detail(step_timings.get(key))
+        if timing_info:
+            detail = f"{timing_info}\n\n{detail}".strip() if detail else timing_info
         if not detail:
             detail = "已到达，未提取到详情" if reached.get(key) else "未命中该步骤"
+        meta = _format_step_timing_badge(step_timings.get(key)) or spec["meta"]
 
         nodes.append(
             {
                 "key": key,
                 "label": spec["label"],
-                "meta": spec["meta"],
+                "meta": meta,
                 "index": spec["label"].split(" ", 1)[0] if " " in spec["label"] else spec["label"],
                 "status": status,
                 "type": str(spec["type"]),
@@ -2581,6 +2586,35 @@ def _format_extract_question_tooltip(match: dict[str, Any]) -> str:
         str(match.get("anchor_line", "")).strip(),
     ]
     return "\n".join(part for part in parts if part is not None).strip()
+
+
+def _format_step_timing_badge(timing: Any) -> str:
+    if not isinstance(timing, dict):
+        return ""
+    elapsed_ms = timing.get("elapsed_ms")
+    if not isinstance(elapsed_ms, int):
+        return ""
+    return _format_elapsed_ms(elapsed_ms)
+
+
+def _format_step_timing_detail(timing: Any) -> str:
+    if not isinstance(timing, dict):
+        return ""
+    elapsed_ms = timing.get("elapsed_ms")
+    timestamp = str(timing.get("timestamp", "")).strip()
+    if not isinstance(elapsed_ms, int):
+        return ""
+    parts = [f"累计耗时: {_format_elapsed_ms(elapsed_ms)}"]
+    if timestamp:
+        parts.append(f"节点时间: {timestamp}")
+    return "\n".join(parts)
+
+
+def _format_elapsed_ms(elapsed_ms: int) -> str:
+    if elapsed_ms < 1000:
+        return f"{elapsed_ms}ms"
+    seconds = elapsed_ms / 1000
+    return f"{seconds:.3f}s"
 
 
 def _format_preprocess_knowledge_tooltip(preprocess_knowledge: dict[str, Any]) -> str:
