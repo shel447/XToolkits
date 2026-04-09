@@ -373,6 +373,7 @@ def render_html(report: dict[str, Any]) -> str:
       display: grid;
       gap: 8px;
       min-width: 0;
+      --flow-svg-scale: 82%;
     }}
     .flow-stage[hidden] {{
       display: none;
@@ -419,8 +420,8 @@ def render_html(report: dict[str, Any]) -> str:
       font-weight: 700;
     }}
     .flow-stage-canvas {{
-      zoom: 0.82;
-      transform-origin: top center;
+      display: grid;
+      gap: 8px;
     }}
     .flow-view {{
       display: grid;
@@ -448,8 +449,9 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .flow-svg {{
       display: block;
-      width: 100%;
+      width: var(--flow-svg-scale, 82%);
       height: auto;
+      margin: 0 auto;
     }}
     .flow-svg .flow-edge-label {{
       pointer-events: none;
@@ -1251,10 +1253,10 @@ def render_html(report: dict[str, Any]) -> str:
     }}
 
     function applyFlowZoom() {{
-      const canvas = document.getElementById('flow-stage-canvas');
+      const flowStage = document.getElementById('flow-stage');
       const value = document.getElementById('flow-zoom-value');
-      if (canvas) {{
-        canvas.style.zoom = String(flowZoom);
+      if (flowStage) {{
+        flowStage.style.setProperty('--flow-svg-scale', `${{Math.round(flowZoom * 100)}}%`);
       }}
       if (value) {{
         value.textContent = `${{Math.round(flowZoom * 100)}}%`;
