@@ -19,6 +19,9 @@ FLOW_NODE_SPECS = [
     {"key": "final_prompt", "label": "拼装Prompt", "meta": "", "type": "process"},
     {"key": "generated_ir", "label": "生成 IR", "meta": "", "type": "process"},
     {"key": "verifier", "label": "校验", "meta": "判断", "type": "decision"},
+    {"key": "compiled_sql", "label": "编译 SQL", "meta": "", "type": "process"},
+    {"key": "sql_execution", "label": "执行SQL查询数据", "meta": "", "type": "process"},
+    {"key": "data2chart", "label": "Data2Chart", "meta": "", "type": "process"},
     {"key": "end", "label": "结束", "meta": "结果", "type": "end"},
 ]
 
@@ -1183,7 +1186,10 @@ def render_html(report: dict[str, Any]) -> str:
       {{ key: 'recalled_tables', label: '表检索结果' }},
       {{ key: 'ir_table_definition', label: 'IR 表定义' }},
       {{ key: 'final_prompt', label: '拼装Prompt' }},
-      {{ key: 'verifier_records', label: '校验记录' }},
+      {{ key: 'verifier_records', label: '编译失败记录' }},
+      {{ key: 'compiled_sql', label: '编译 SQL' }},
+      {{ key: 'sql_execution', label: '执行SQL查询数据' }},
+      {{ key: 'data2chart', label: 'Data2Chart' }},
       {{ key: 'generated_ir', label: '生成 IR 结果' }},
       {{ key: 'complete_ir', label: '完整 IR' }},
       {{ key: 'parse_errors', label: '解析错误' }},
@@ -1837,7 +1843,7 @@ def _render_summary_metrics(summary_stats: dict[str, Any]) -> str:
       <span class="summary-chip summary-chip-unknown">未知问题数：{summary_stats["unknown_count"]}</span>
       <span class="summary-chip summary-chip-reject">拒答问题数：{summary_stats["reject_count"]}</span>
       <span class="summary-chip summary-chip-follow-up">追问问题数：{summary_stats["follow_up_count"]}</span>
-      <span class="summary-chip summary-chip-retry">失败重试次数：{summary_stats["failed_retry_count"]}</span>
+      <span class="summary-chip summary-chip-retry">编译失败重试次数：{summary_stats["failed_retry_count"]}</span>
     </section>
     """
 
@@ -1846,7 +1852,7 @@ def _render_summary_retry_reasons(retry_reason_counts: Counter[str]) -> str:
     if not retry_reason_counts:
         return """
     <section class="summary-reasons">
-      <h3 class="summary-reasons-title">重试原因统计</h3>
+      <h3 class="summary-reasons-title">编译失败原因统计</h3>
       <p class="summary-reasons-empty">无</p>
     </section>
     """
@@ -1857,7 +1863,7 @@ def _render_summary_retry_reasons(retry_reason_counts: Counter[str]) -> str:
     )
     return f"""
     <section class="summary-reasons">
-      <h3 class="summary-reasons-title">重试原因统计</h3>
+      <h3 class="summary-reasons-title">编译失败原因统计</h3>
       <ul class="summary-reasons-list">{items}</ul>
     </section>
     """
@@ -1956,7 +1962,8 @@ def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str
 def _render_flow_groups(positions: dict[str, dict[str, int]]) -> list[str]:
     groups = [
         ("意图识别", "ac_enriched_question", "preprocess_decision"),
-        ("Text2Data-SQL生成", "mask_question", "verifier"),
+        ("Text2Data-SQL生成", "mask_question", "sql_execution"),
+        ("Data2Chart", "data2chart", "data2chart"),
     ]
     rendered: list[str] = []
     for label, start_key, end_key in groups:
@@ -2030,6 +2037,9 @@ def _render_flow_connectors(
         ("recalled_tables", "final_prompt", _summarize_tables_for_edge(match.get("recalled_tables", []))),
         ("final_prompt", "generated_ir", ""),
         ("generated_ir", "verifier", ""),
+        ("verifier", "compiled_sql", ""),
+        ("compiled_sql", "sql_execution", _short_edge_text(str(match.get("compiled_sql", "")).strip(), 24)),
+        ("sql_execution", "data2chart", ""),
     ]
 
     for from_key, to_key, label in main_pairs:
@@ -2111,7 +2121,7 @@ def _render_flow_connectors(
                     ),
                 ],
                 "active" if retry_count > 0 else "unknown",
-                f"重试 {retry_count} 次" if retry_count > 0 else "",
+                f"编译失败重试 {retry_count} 次" if retry_count > 0 else "",
                 label_x=142,
                 label_y=(positions["verifier"]["cy"] + positions["generated_ir"]["cy"]) / 2,
             )
@@ -2120,8 +2130,8 @@ def _render_flow_connectors(
     flow_status = str(match.get("flow_status", "unknown"))
     connectors.append(
         _render_vertical_connector(
-            positions["verifier"]["cx"],
-            _flow_node_bottom(positions["verifier"]["cy"], node_lookup["verifier"]["type"]),
+            positions["data2chart"]["cx"],
+            _flow_node_bottom(positions["data2chart"]["cy"], node_lookup["data2chart"]["type"]),
             _flow_node_top(positions["end"]["cy"], node_lookup["end"]["type"]),
             "active" if flow_status == "success" else "unknown",
             _short_edge_text(_extract_sql_summary(match), 24) if flow_status == "success" else "",
@@ -2377,7 +2387,31 @@ def _render_match(anchor_id: str, match: dict[str, Any]) -> str:
                 skipped="generated_ir" in skipped_sections,
             ),
         ),
-        _wrap_config_item("verifier_records", _render_highlight_list_section("校验记录", match["verifier_failures"], "retry-block")),
+        _wrap_config_item("verifier_records", _render_highlight_list_section("编译失败记录", match["verifier_failures"], "retry-block")),
+        _wrap_config_item(
+            "compiled_sql",
+            _render_collapsible_text_section(
+                "编译 SQL",
+                match.get("compiled_sql", ""),
+                skipped="compiled_sql" in skipped_sections,
+            ),
+        ),
+        _wrap_config_item(
+            "sql_execution",
+            _render_text_section(
+                "执行SQL查询数据",
+                match.get("sql_execution_result", ""),
+                skipped="sql_execution" in skipped_sections,
+            ),
+        ),
+        _wrap_config_item(
+            "data2chart",
+            _render_text_section(
+                "Data2Chart",
+                match.get("data2chart_result", ""),
+                skipped="data2chart" in skipped_sections,
+            ),
+        ),
         _wrap_config_item(
             "complete_ir",
             _render_copyable_text_section(
@@ -2427,6 +2461,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
         ),
         "generated_ir": bool(str(match.get("generated_ir", "")).strip()),
         "verifier": bool(match.get("verifier_failures")) or str(match.get("flow_status", "unknown")) in {"success", "failed"},
+        "compiled_sql": bool(str(match.get("compiled_sql", "")).strip()),
+        "sql_execution": bool(str(match.get("sql_execution_result", "")).strip()),
+        "data2chart": bool(str(match.get("data2chart_result", "")).strip()),
         "end": str(match.get("flow_status", "unknown")) in {"success", "failed"},
     }
 
@@ -2444,6 +2481,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
         "preprocess_knowledge": direct["preprocess_knowledge"] or any(
@@ -2457,6 +2497,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
         "preprocess_decision": direct["preprocess_decision"] or any(
@@ -2469,6 +2512,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
         "mask_question": direct["mask_question"] or any(
@@ -2480,6 +2526,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
         "sql_knowledge": direct["sql_knowledge"] or any(
@@ -2490,6 +2539,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
         "sql_rewrite": direct["sql_rewrite"] or any(
@@ -2499,6 +2551,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
         "recalled_tables": direct["recalled_tables"] or any(
@@ -2507,11 +2562,17 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
                 "final_prompt",
                 "generated_ir",
                 "verifier",
+                "compiled_sql",
+                "sql_execution",
+                "data2chart",
             ]
         ),
-        "final_prompt": direct["final_prompt"] or direct["generated_ir"] or direct["verifier"],
-        "generated_ir": direct["generated_ir"] or direct["verifier"] or direct["end"],
-        "verifier": direct["verifier"] or (direct["end"] and direct["generated_ir"]),
+        "final_prompt": direct["final_prompt"] or direct["generated_ir"] or direct["verifier"] or direct["compiled_sql"] or direct["sql_execution"] or direct["data2chart"],
+        "generated_ir": direct["generated_ir"] or direct["verifier"] or direct["compiled_sql"] or direct["sql_execution"] or direct["data2chart"] or direct["end"],
+        "verifier": direct["verifier"] or direct["compiled_sql"] or direct["sql_execution"] or direct["data2chart"] or (direct["end"] and (direct["generated_ir"] or direct["compiled_sql"])),
+        "compiled_sql": direct["compiled_sql"] or direct["sql_execution"] or direct["data2chart"] or direct["end"],
+        "sql_execution": direct["sql_execution"] or direct["data2chart"] or direct["end"],
+        "data2chart": direct["data2chart"] or direct["end"],
         "end": direct["end"],
     }
 
@@ -2527,6 +2588,9 @@ def _build_flow_nodes(match: dict[str, Any]) -> list[dict[str, str]]:
         "final_prompt": str(match.get("final_prompt", {}).get("combined", "")).strip() or str(match.get("final_prompt", {}).get("raw", "")).strip(),
         "generated_ir": str(match.get("generated_ir", "")).strip(),
         "verifier": verifier_text,
+        "compiled_sql": str(match.get("compiled_sql", "")).strip(),
+        "sql_execution": str(match.get("sql_execution_result", "")).strip(),
+        "data2chart": str(match.get("data2chart_result", "")).strip(),
         "end": end_text,
     }
 
@@ -2676,9 +2740,9 @@ def _format_preprocess_decision_tooltip(match: dict[str, Any]) -> str:
 def _format_verifier_tooltip(match: dict[str, Any]) -> str:
     retry_count = int(match.get("retry_count", 0) or 0)
     failures = [str(item).strip() for item in match.get("verifier_failures", []) if str(item).strip()]
-    parts = [f"重试次数: {retry_count}"]
+    parts = [f"编译失败重试次数: {retry_count}"]
     if failures:
-        parts.append("失败原因:\n" + "\n".join(failures))
+        parts.append("编译失败原因:\n" + "\n".join(failures))
     return "\n\n".join(parts).strip()
 
 
@@ -2692,7 +2756,7 @@ def _format_end_tooltip(match: dict[str, Any]) -> str:
     if flow_status == "failed":
         failures = [str(item).strip() for item in match.get("verifier_failures", []) if str(item).strip()]
         if failures:
-            return "流程状态: 失败\n\n校验失败原因:\n" + "\n".join(failures)
+            return "流程状态: 失败\n\n编译失败原因:\n" + "\n".join(failures)
         return "流程状态: 失败"
     if flow_status == "reject":
         return "流程状态: 拒答\n\n流程在拒答/追问阶段终止。"
@@ -2703,6 +2767,7 @@ def _format_end_tooltip(match: dict[str, Any]) -> str:
 
 def _extract_sql_summary(match: dict[str, Any]) -> str:
     candidates = [
+        str(match.get("compiled_sql", "")),
         str(match.get("complete_ir", "")),
         str(match.get("generated_ir", "")),
     ]
@@ -2790,7 +2855,7 @@ def _render_status_summary(match: dict[str, Any]) -> str:
     <section class="status-summary">
       <span class="status-chip {status_class}">流程状态：{flow_label}</span>
       {preprocess_chip}
-      <span class="status-chip">重试次数：{match.get("retry_count", 0)}</span>
+      <span class="status-chip">编译失败重试次数：{match.get("retry_count", 0)}</span>
     </section>
     """
 

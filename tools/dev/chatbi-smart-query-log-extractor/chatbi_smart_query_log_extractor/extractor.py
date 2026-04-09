@@ -725,6 +725,9 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         if terminated_at_preprocess
         else _extract_sql_rewrite(log_entries)
     )
+    compiled_sql = _extract_compiled_sql(log_entries)
+    sql_execution_result = ""
+    data2chart_result = ""
     step_timings = _build_step_timings(
         anchor_timestamp=anchor["anchor_timestamp"],
         root_entries=preprocess_entries,
@@ -782,6 +785,9 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         "rag_results": rag_results,
         "rewritten_question": rewritten_question,
         "sql_rewritten_question": sql_rewritten_question,
+        "compiled_sql": compiled_sql,
+        "sql_execution_result": sql_execution_result,
+        "data2chart_result": data2chart_result,
         "recalled_tables": recalled_tables,
         "ir_table_definition": ir_table_definition,
         "final_prompt": final_prompt,
@@ -879,6 +885,9 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         if terminated_at_preprocess
         else _extract_sql_rewrite(log_entries)
     )
+    compiled_sql = _extract_compiled_sql(log_entries)
+    sql_execution_result = ""
+    data2chart_result = ""
     step_timings = _build_step_timings(
         anchor_timestamp=raw_match["anchor_timestamp"],
         root_entries=root_entries,
@@ -938,6 +947,9 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         "rag_results": rag_results,
         "rewritten_question": rewritten_question,
         "sql_rewritten_question": sql_rewritten_question,
+        "compiled_sql": compiled_sql,
+        "sql_execution_result": sql_execution_result,
+        "data2chart_result": data2chart_result,
         "recalled_tables": recalled_tables,
         "ir_table_definition": ir_table_definition,
         "final_prompt": final_prompt,
@@ -1282,6 +1294,14 @@ def _build_step_timings(
         ),
     )
     step_timestamps["verifier"] = verifier_timestamp
+    compiled_sql_timestamp = _find_last_entry_timestamp(log_entries, lambda entry: FLOW_SUCCESS_KEYWORD in entry["line"])
+    step_timestamps["compiled_sql"] = compiled_sql_timestamp
+    if flow_status == SUCCESS_STATUS:
+        step_timestamps["sql_execution"] = compiled_sql_timestamp
+        step_timestamps["data2chart"] = compiled_sql_timestamp
+    else:
+        step_timestamps["sql_execution"] = ""
+        step_timestamps["data2chart"] = ""
     if flow_status in {REJECT_STATUS, FOLLOW_UP_STATUS}:
         step_timestamps["end"] = step_timestamps["preprocess_decision"]
     elif flow_status in {SUCCESS_STATUS, FAILED_STATUS}:
@@ -1348,6 +1368,15 @@ def _find_last_knowledge_sequence_timestamp(entries: list[dict[str, Any]], scope
                     best_timestamp = str(entry.get("timestamp", "")).strip()
                 pending_request_scope = ""
     return best_timestamp
+
+
+def _extract_compiled_sql(entries: list[dict[str, Any]]) -> str:
+    compiled_sql = ""
+    for entry in entries:
+        line = entry["line"]
+        if FLOW_SUCCESS_KEYWORD in line:
+            compiled_sql = _extract_after_keyword(line, FLOW_SUCCESS_KEYWORD)
+    return compiled_sql
 
 
 def _max_timestamp_strings(*timestamps: str) -> str:
