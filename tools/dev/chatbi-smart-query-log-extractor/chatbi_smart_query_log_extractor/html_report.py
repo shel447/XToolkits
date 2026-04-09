@@ -8,16 +8,16 @@ from typing import Any
 
 FLOW_NODE_SPECS = [
     {"key": "start", "label": "开始", "meta": "起始", "type": "start"},
-    {"key": "ac_enriched_question", "label": "2.1 实体检索", "meta": "", "type": "process"},
-    {"key": "preprocess_knowledge", "label": "2.2 拒答/追问知识", "meta": "", "type": "process"},
-    {"key": "preprocess_decision", "label": "2.3 拒答/追问判定", "meta": "判断", "type": "decision"},
-    {"key": "mask_question", "label": "3.1 标准化问题", "meta": "", "type": "process"},
-    {"key": "sql_knowledge", "label": "3.2 检索SQL生成知识", "meta": "", "type": "process"},
-    {"key": "sql_rewrite", "label": "3.3 问题改写", "meta": "", "type": "process"},
-    {"key": "recalled_tables", "label": "3.4 表检索", "meta": "", "type": "process"},
-    {"key": "final_prompt", "label": "3.6 拼装Prompt", "meta": "", "type": "process"},
-    {"key": "generated_ir", "label": "3.7 生成 IR", "meta": "", "type": "process"},
-    {"key": "verifier", "label": "3.8 校验", "meta": "判断", "type": "decision"},
+    {"key": "ac_enriched_question", "label": "实体检索", "meta": "", "type": "process"},
+    {"key": "preprocess_knowledge", "label": "拒答/追问知识", "meta": "", "type": "process"},
+    {"key": "preprocess_decision", "label": "拒答/追问判定", "meta": "判断", "type": "decision"},
+    {"key": "mask_question", "label": "标准化问题", "meta": "", "type": "process"},
+    {"key": "sql_knowledge", "label": "检索SQL生成知识", "meta": "", "type": "process"},
+    {"key": "sql_rewrite", "label": "问题改写", "meta": "", "type": "process"},
+    {"key": "recalled_tables", "label": "表检索", "meta": "", "type": "process"},
+    {"key": "final_prompt", "label": "拼装Prompt", "meta": "", "type": "process"},
+    {"key": "generated_ir", "label": "生成 IR", "meta": "", "type": "process"},
+    {"key": "verifier", "label": "校验", "meta": "判断", "type": "decision"},
     {"key": "end", "label": "结束", "meta": "结果", "type": "end"},
 ]
 
@@ -388,12 +388,12 @@ def render_html(report: dict[str, Any]) -> str:
       display: none;
     }}
     .flow-view-title {{
-      padding: 8px 10px;
+      padding: 6px 8px;
       border: 1px solid #dce5f2;
       border-radius: 12px;
       background: #f8fbff;
       color: #334a67;
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1.45;
     }}
     .flow-svg-wrap {{
@@ -401,7 +401,7 @@ def render_html(report: dict[str, Any]) -> str:
       border: 1px solid #d9e2ef;
       border-radius: 16px;
       background: #ffffff;
-      padding: 10px 8px 16px;
+      padding: 6px 6px 10px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }}
     .flow-svg {{
@@ -441,7 +441,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .flow-svg .flow-node-text {{
       fill: #243447;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       text-anchor: middle;
       dominant-baseline: middle;
@@ -449,7 +449,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .flow-svg .flow-node-subtext {{
       fill: #607086;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 600;
       text-anchor: middle;
       dominant-baseline: middle;
@@ -1801,9 +1801,9 @@ def _render_flow_view(anchor_id: str, match: dict[str, Any], active: bool) -> st
 def _render_flow_svg(anchor_id: str, match: dict[str, Any], nodes: list[dict[str, str]]) -> str:
     center_x = 372
     width = 760
-    top_padding = 64
-    step = 122
-    height = top_padding * 2 + step * (len(nodes) - 1) + 120
+    top_padding = 48
+    step = 102
+    height = top_padding * 2 + step * (len(nodes) - 1) + 92
     positions = {
         node["key"]: {"cx": center_x, "cy": top_padding + index * step}
         for index, node in enumerate(nodes)
@@ -1837,13 +1837,13 @@ def _render_flow_groups(positions: dict[str, dict[str, int]]) -> list[str]:
     ]
     rendered: list[str] = []
     for label, start_key, end_key in groups:
-        top = positions[start_key]["cy"] - 48
-        bottom = positions[end_key]["cy"] + 52
+        top = positions[start_key]["cy"] - 38
+        bottom = positions[end_key]["cy"] + 42
         rendered.append(
             f"""
             <g class="flow-group">
               <rect class="flow-group-box" x="120" y="{top:.0f}" width="504" height="{bottom - top:.0f}" rx="18" ry="18"></rect>
-              <text class="flow-group-title" x="144" y="{top + 20:.0f}">{escape(label)}</text>
+              <text class="flow-group-title" x="144" y="{top + 18:.0f}">{escape(label)}</text>
             </g>
             """
         )
@@ -2092,10 +2092,10 @@ def _resolve_linear_connector_status(
 
 def _get_flow_node_size(node_type: str) -> tuple[int, int]:
     if node_type in {"start", "end"}:
-        return (210, 58)
+        return (188, 50)
     if node_type == "decision":
-        return (220, 84)
-    return (232, 68)
+        return (196, 74)
+    return (206, 58)
 
 
 def _flow_node_top(center_y: float, node_type: str) -> float:
