@@ -207,8 +207,10 @@ def render_html(report: dict[str, Any]) -> str:
     .nav {{
       position: sticky;
       top: 12px;
-      max-height: calc(100vh - 24px);
-      overflow-y: auto;
+      height: calc(100vh - 24px);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
       background: rgba(255, 255, 255, 0.9);
       backdrop-filter: blur(8px);
       border: 1px solid var(--border);
@@ -218,6 +220,12 @@ def render_html(report: dict[str, Any]) -> str:
     .nav ul {{
       margin: 10px 0 0;
       padding-left: 18px;
+    }}
+    .nav-list-shell {{
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 2px;
     }}
     .nav-controls {{
       display: grid;
@@ -1160,8 +1168,10 @@ def render_html(report: dict[str, Any]) -> str:
       <aside class="nav">
         <strong>问题导航</strong>
         {_render_nav_controls()}
-        <ul id="nav-list">{nav_html}</ul>
-        <div id="nav-empty-state" class="nav-empty-state" hidden>无匹配结果</div>
+        <div class="nav-list-shell">
+          <ul id="nav-list">{nav_html}</ul>
+          <div id="nav-empty-state" class="nav-empty-state" hidden>无匹配结果</div>
+        </div>
       </aside>
       <section class="workspace">
         <section class="workspace-shell">
