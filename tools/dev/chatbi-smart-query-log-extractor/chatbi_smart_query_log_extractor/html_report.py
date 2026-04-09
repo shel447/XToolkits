@@ -1201,14 +1201,14 @@ def render_html(report: dict[str, Any]) -> str:
     const FLOW_ZOOM_MAX = 1.2;
     const FLOW_ZOOM_STEP = 0.05;
     const FLOW_SWITCH_EDGE_GAP = 8;
-    const FLOW_SWITCH_OVERSCROLL_THRESHOLD = 140;
+    const FLOW_SWITCH_CONFIRM_DELAY_MS = 500;
     const FLOW_SWITCH_COOLDOWN_MS = 360;
     let detailFieldVisibility = {{}};
     let navSyncTicking = false;
     let activeContentTab = 'flow';
     let flowZoom = FLOW_ZOOM_DEFAULT;
-    let flowBoundaryOverscroll = 0;
-    let flowBoundaryDirection = 0;
+    let flowBoundaryPendingDirection = 0;
+    let flowBoundaryPendingAt = 0;
     let lastFlowSwitchAt = 0;
 
     function getDefaultDetailVisibility() {{
@@ -1307,9 +1307,9 @@ def render_html(report: dict[str, Any]) -> str:
       }}
     }}
 
-    function resetFlowBoundaryOverscroll() {{
-      flowBoundaryOverscroll = 0;
-      flowBoundaryDirection = 0;
+    function resetFlowBoundarySwitchIntent() {{
+      flowBoundaryPendingDirection = 0;
+      flowBoundaryPendingAt = 0;
     }}
 
     function applyDetailVisibility() {{
@@ -1555,7 +1555,7 @@ def render_html(report: dict[str, Any]) -> str:
       }}
       flowPanelBody.addEventListener('wheel', (event) => {{
         if (activeContentTab !== 'flow') {{
-          resetFlowBoundaryOverscroll();
+          resetFlowBoundarySwitchIntent();
           return;
         }}
         const direction = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
@@ -1574,15 +1574,15 @@ def render_html(report: dict[str, Any]) -> str:
         let nextAnchor = '';
         const atSwitchEdge = (direction > 0 && atBottomEdge) || (direction < 0 && atTopEdge);
         if (!atSwitchEdge) {{
-          resetFlowBoundaryOverscroll();
+          resetFlowBoundarySwitchIntent();
           return;
         }}
-        if (flowBoundaryDirection !== direction) {{
-          flowBoundaryDirection = direction;
-          flowBoundaryOverscroll = 0;
+        if (flowBoundaryPendingDirection !== direction) {{
+          flowBoundaryPendingDirection = direction;
+          flowBoundaryPendingAt = now;
+          return;
         }}
-        flowBoundaryOverscroll += Math.abs(event.deltaY);
-        if (flowBoundaryOverscroll < FLOW_SWITCH_OVERSCROLL_THRESHOLD) {{
+        if (now - flowBoundaryPendingAt < FLOW_SWITCH_CONFIRM_DELAY_MS) {{
           return;
         }}
         if (direction > 0) {{
@@ -1591,19 +1591,18 @@ def render_html(report: dict[str, Any]) -> str:
           nextAnchor = getAdjacentMatchAnchor(getActiveMatchAnchorFromViewport(), -1);
         }}
         if (!nextAnchor) {{
-          flowBoundaryOverscroll = FLOW_SWITCH_OVERSCROLL_THRESHOLD;
           return;
         }}
         event.preventDefault();
         lastFlowSwitchAt = now;
-        resetFlowBoundaryOverscroll();
+        resetFlowBoundarySwitchIntent();
         activateMatchAnchor(nextAnchor, {{ preserveTab: true, scrollDetails: false, resetFlowScroll: true }});
       }}, {{ passive: false }});
       flowPanelBody.addEventListener('scroll', () => {{
         const currentScrollTop = flowPanelBody.scrollTop;
         const maxScrollTop = Math.max(0, flowPanelBody.scrollHeight - flowPanelBody.clientHeight);
         if (currentScrollTop > FLOW_SWITCH_EDGE_GAP && currentScrollTop < maxScrollTop - FLOW_SWITCH_EDGE_GAP) {{
-          resetFlowBoundaryOverscroll();
+          resetFlowBoundarySwitchIntent();
         }}
       }}, {{ passive: true }});
     }}
