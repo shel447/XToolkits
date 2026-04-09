@@ -146,6 +146,22 @@ tables = get_tables_columns(table_exprs)
 2026-04-08 10:00:00.029 [INFO] [711111111111111] sqlflow res: sql: select 1
 """
 
+MULTILINE_COMPILED_SQL_LOG = """2026-04-08 12:00:00.001 [INFO] [811111111111119] sql_template_match hit query: 多行SQL问题
+2026-04-08 12:00:00.002 [INFO] [811111111111119] call sqlflow input: 多行SQL问题
+2026-04-08 12:00:00.003 [INFO] [811111111111120] MASK QUESTION: 多行SQL问题
+2026-04-08 12:00:00.004 [INFO] [811111111111120] 生成器任务：{'messages': [{'role': 'system', 'content': 'system'}, {'role': 'user', 'content': 'user'}]}
+2026-04-08 12:00:00.005 [INFO] [811111111111120] 最终的IR
+@dataclass
+class MultiSqlIR:
+tables = get_tables_columns(table_exprs)
+2026-04-08 12:00:00.006 [INFO] [811111111111120] sqlflow res: sql: SELECT
+  amount,
+  shop_id
+FROM sales_order
+WHERE ds >= current_date - 7
+2026-04-08 12:00:00.007 [INFO] [811111111111120] after sql log
+"""
+
 TERMINATED_PREPROCESS_LOG = """2026-04-08 11:00:00.001 [INFO] [811111111111112] sql_template_match hit query: 拒答问题
 2026-04-08 11:00:00.002 [INFO] [811111111111112] question after ac: 拒答AC问题
 2026-04-08 11:00:00.003 [INFO] [811111111111112] load klg for KlgScope.INTENTION_REJECT: {'recommends': [{'id': 'reject1'}, {'id': 'reject2'}]}
@@ -541,6 +557,16 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(match["flow_status"], "success")
         self.assertFalse(match["terminated_at_preprocess"])
         self.assertEqual(match["skipped_sections"], [])
+
+    def test_extract_report_collects_multiline_compiled_sql_until_next_timestamp_log(self) -> None:
+        report = extract_report(MULTILINE_COMPILED_SQL_LOG, "multiline-sql.log")
+
+        match = report["questions"][0]["matches"][0]
+
+        self.assertEqual(
+            match["compiled_sql"],
+            "SELECT\n  amount,\n  shop_id\nFROM sales_order\nWHERE ds >= current_date - 7",
+        )
 
     def test_extract_report_marks_reject_and_follow_up_as_terminated(self) -> None:
         report = extract_report(TERMINATED_PREPROCESS_LOG, "terminated.log")

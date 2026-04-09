@@ -725,7 +725,7 @@ def _build_match(index: int, anchor: dict[str, Any], lines: list[str]) -> dict[s
         if terminated_at_preprocess
         else _extract_sql_rewrite(log_entries)
     )
-    compiled_sql = _extract_compiled_sql(log_entries)
+    compiled_sql = _extract_compiled_sql_from_lines(window_lines, thread_id)
     sql_execution_result = ""
     data2chart_result = ""
     step_timings = _build_step_timings(
@@ -885,7 +885,7 @@ def _build_cross_thread_match(index: int, raw_match: dict[str, Any], lines: list
         if terminated_at_preprocess
         else _extract_sql_rewrite(log_entries)
     )
-    compiled_sql = _extract_compiled_sql(log_entries)
+    compiled_sql = _extract_compiled_sql_from_segments(segment_views)
     sql_execution_result = ""
     data2chart_result = ""
     step_timings = _build_step_timings(
@@ -1370,12 +1370,26 @@ def _find_last_knowledge_sequence_timestamp(entries: list[dict[str, Any]], scope
     return best_timestamp
 
 
-def _extract_compiled_sql(entries: list[dict[str, Any]]) -> str:
+def _extract_compiled_sql_from_lines(lines: list[str], thread_id: str) -> str:
     compiled_sql = ""
-    for entry in entries:
-        line = entry["line"]
-        if FLOW_SUCCESS_KEYWORD in line:
-            compiled_sql = _extract_after_keyword(line, FLOW_SUCCESS_KEYWORD)
+    for index, line in enumerate(lines):
+        if not (_line_has_thread_id(line, thread_id) and FLOW_SUCCESS_KEYWORD in line):
+            continue
+        block_lines = [_extract_after_keyword(line, FLOW_SUCCESS_KEYWORD)]
+        for next_line in lines[index + 1 :]:
+            if _is_log_line(next_line):
+                break
+            block_lines.append(next_line)
+        compiled_sql = "\n".join(part.rstrip() for part in block_lines).strip()
+    return compiled_sql
+
+
+def _extract_compiled_sql_from_segments(segment_views: list[dict[str, Any]]) -> str:
+    compiled_sql = ""
+    for segment_view in segment_views:
+        extracted = _extract_compiled_sql_from_lines(segment_view["lines"], segment_view["thread_id"])
+        if extracted:
+            compiled_sql = extracted
     return compiled_sql
 
 
