@@ -387,12 +387,6 @@ def render_html(report: dict[str, Any]) -> str:
       padding: 0;
       overflow: visible;
     }}
-    .flow-stage-toolbar {{
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 6px;
-    }}
     .flow-stage-controls {{
       display: inline-flex;
       align-items: center;
@@ -401,6 +395,13 @@ def render_html(report: dict[str, Any]) -> str:
       border: 1px solid #d9e2ef;
       border-radius: 999px;
       background: #f8fbff;
+    }}
+    .flow-stage-controls-overlay {{
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 12;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
     }}
     .flow-zoom-button {{
       border: 1px solid #c8d5e6;
@@ -1290,6 +1291,30 @@ def render_html(report: dict[str, Any]) -> str:
       saveFlowZoom();
     }}
 
+    function setFlowZoomWithCursor(nextZoom, clientX, clientY) {{
+      const flowPanelBody = document.getElementById('flow-panel-body');
+      if (!flowPanelBody || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {{
+        setFlowZoom(nextZoom);
+        return;
+      }}
+      const previousZoom = flowZoom;
+      const clampedZoom = clampFlowZoom(nextZoom);
+      if (Math.abs(clampedZoom - previousZoom) < 0.0001) {{
+        return;
+      }}
+      const panelRect = flowPanelBody.getBoundingClientRect();
+      const pointerX = clientX - panelRect.left;
+      const pointerY = clientY - panelRect.top;
+      const scrollLeftBefore = flowPanelBody.scrollLeft;
+      const scrollTopBefore = flowPanelBody.scrollTop;
+      const worldX = scrollLeftBefore + pointerX;
+      const worldY = scrollTopBefore + pointerY;
+      const zoomRatio = clampedZoom / previousZoom;
+      setFlowZoom(clampedZoom);
+      flowPanelBody.scrollLeft = Math.max(0, worldX * zoomRatio - pointerX);
+      flowPanelBody.scrollTop = Math.max(0, worldY * zoomRatio - pointerY);
+    }}
+
     function bindFlowZoomControls() {{
       flowZoom = loadFlowZoom();
       applyFlowZoom();
@@ -1305,6 +1330,26 @@ def render_html(report: dict[str, Any]) -> str:
       if (zoomReset) {{
         zoomReset.addEventListener('click', () => setFlowZoom(1));
       }}
+    }}
+
+    function bindFlowWheelZoom() {{
+      const flowPanelBody = document.getElementById('flow-panel-body');
+      if (!flowPanelBody) {{
+        return;
+      }}
+      flowPanelBody.addEventListener('wheel', (event) => {{
+        if (activeContentTab !== 'flow') {{
+          return;
+        }}
+        if (!(event.ctrlKey || event.metaKey)) {{
+          return;
+        }}
+        event.preventDefault();
+        const direction = event.deltaY < 0 ? 1 : -1;
+        const stepMultiplier = Math.min(3, Math.max(1, Math.abs(event.deltaY) / 120));
+        const nextZoom = flowZoom + direction * FLOW_ZOOM_STEP * stepMultiplier;
+        setFlowZoomWithCursor(nextZoom, event.clientX, event.clientY);
+      }}, {{ passive: false }});
     }}
 
     function resetFlowBoundarySwitchIntent() {{
@@ -1558,6 +1603,10 @@ def render_html(report: dict[str, Any]) -> str:
           resetFlowBoundarySwitchIntent();
           return;
         }}
+        if (event.ctrlKey || event.metaKey) {{
+          resetFlowBoundarySwitchIntent();
+          return;
+        }}
         const direction = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
         if (!direction) {{
           return;
@@ -1791,6 +1840,7 @@ def render_html(report: dict[str, Any]) -> str:
     function initializePage() {{
       initSettingsPanel();
       bindFlowZoomControls();
+      bindFlowWheelZoom();
       bindFlowNodeEvents();
       bindContentTabs();
       bindNavLinkBehavior();
@@ -1935,15 +1985,13 @@ def _render_flow_stage(flow_views_html: str, active_flow_anchor: str) -> str:
         """
     return f"""
     <section id="flow-stage" class="flow-stage" data-active-match-anchor="{escape(active_flow_anchor)}">
-      <div class="flow-stage-toolbar">
-        <div id="flow-zoom-controls" class="flow-stage-controls" aria-label="流程图缩放">
+      <div id="flow-stage-body" class="flow-stage-body">
+        <div id="flow-zoom-controls" class="flow-stage-controls flow-stage-controls-overlay" aria-label="流程图缩放">
           <button id="flow-zoom-out" class="flow-zoom-button" type="button" title="缩小">-</button>
           <span id="flow-zoom-value" class="flow-zoom-value">82%</span>
           <button id="flow-zoom-reset" class="flow-zoom-button" type="button" title="重置">1:1</button>
           <button id="flow-zoom-in" class="flow-zoom-button" type="button" title="放大">+</button>
         </div>
-      </div>
-      <div id="flow-stage-body" class="flow-stage-body">
         <div id="flow-stage-canvas" class="flow-stage-canvas">
           {flow_views_html}
         </div>
