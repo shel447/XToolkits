@@ -318,8 +318,20 @@ def _render_service_page(has_report: bool) -> str:
       width: 100%;
       padding: 8px 10px;
       display: grid;
-      gap: 10px;
+      gap: 8px;
       min-height: 100vh;
+    }}
+    .page-shell {{
+      display: grid;
+      justify-items: start;
+      gap: 8px;
+      width: 100%;
+    }}
+    .page-main {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      width: 100%;
+      min-width: 0;
     }}
     .panel {{
       background: var(--panel);
@@ -333,39 +345,42 @@ def _render_service_page(has_report: bool) -> str:
       font-size: 15px;
     }}
     .service-toolbar {{
-      padding: 10px 12px;
+      width: fit-content;
+      max-width: min(100%, 760px);
+      padding: 8px 10px;
+      justify-self: start;
     }}
     .service-toolbar h1 {{
       margin: 0;
-      font-size: 18px;
+      font-size: 16px;
       line-height: 1.2;
     }}
     .service-desc {{
-      margin-top: 4px;
-      font-size: 12px;
+      margin-top: 3px;
+      font-size: 11px;
       color: var(--muted);
       line-height: 1.35;
     }}
     .controls {{
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
-      margin-top: 8px;
+      margin-top: 6px;
     }}
     .picker-label {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 110px;
-      height: 32px;
-      padding: 0 12px;
+      min-width: 100px;
+      height: 30px;
+      padding: 0 10px;
       border-radius: 8px;
       border: 1px solid var(--border);
       background: #f8fbff;
       color: var(--accent);
       cursor: pointer;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
     }}
     .picker-label:hover {{
@@ -376,14 +391,14 @@ def _render_service_page(has_report: bool) -> str:
     }}
     .layout {{
       display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
+      grid-template-columns: 260px minmax(0, 1fr);
       gap: 10px;
       align-items: start;
     }}
     .result-panel {{
       display: grid;
       grid-template-rows: auto 1fr;
-      min-height: calc(100vh - 128px);
+      min-height: calc(100vh - 104px);
     }}
     .file-list {{
       display: grid;
@@ -410,7 +425,7 @@ def _render_service_page(has_report: bool) -> str:
       background: #edf9f7;
     }}
     .status {{
-      margin-top: 8px;
+      margin-top: 6px;
       font-size: 12px;
       line-height: 1.35;
       color: var(--muted);
@@ -440,28 +455,32 @@ def _render_service_page(has_report: bool) -> str:
 </head>
 <body>
   <div class="page">
-    <section class="panel service-toolbar">
-      <h1>ChatBI 日志浏览服务</h1>
-      <div class="service-desc">固定单端口运行，支持选择日志文件或日志目录后逐个解析。</div>
-      <div class="controls">
-        <label class="picker-label" for="log-file-input">选择日志文件</label>
-        <input id="log-file-input" class="picker-input" type="file" accept=".log,.txt,.out,.text,*/*" />
-        <label class="picker-label" for="log-directory-input">选择日志目录</label>
-        <input id="log-directory-input" class="picker-input" type="file" webkitdirectory directory multiple />
-      </div>
-      <div id="service-status" class="status">{initial_status}</div>
-    </section>
-    <div class="layout">
-      <section class="panel">
-        <h2>已选日志文件</h2>
-        <div id="selected-files" class="file-list">
-          <div class="status">暂无文件</div>
+    <div class="page-shell">
+      <section class="panel service-toolbar">
+        <h1>ChatBI 日志浏览服务</h1>
+        <div class="service-desc">固定单端口运行，支持选择日志文件或日志目录后逐个解析。</div>
+        <div class="controls">
+          <label class="picker-label" for="log-file-input">选择日志文件</label>
+          <input id="log-file-input" class="picker-input" type="file" accept=".log,.txt,.out,.text,*/*" />
+          <label class="picker-label" for="log-directory-input">选择日志目录</label>
+          <input id="log-directory-input" class="picker-input" type="file" webkitdirectory directory multiple />
         </div>
+        <div id="service-status" class="status">{initial_status}</div>
       </section>
-      <section class="panel result-panel">
-        <h2>解析结果</h2>
-        <iframe id="report-frame" class="report-frame" src="{initial_src}" title="解析结果"></iframe>
-      </section>
+      <div class="page-main">
+        <div class="layout">
+          <section class="panel">
+            <h2>已选日志文件</h2>
+            <div id="selected-files" class="file-list">
+              <div class="status">暂无文件</div>
+            </div>
+          </section>
+          <section class="panel result-panel">
+            <h2>解析结果</h2>
+            <iframe id="report-frame" class="report-frame" src="{initial_src}" title="解析结果"></iframe>
+          </section>
+        </div>
+      </div>
     </div>
   </div>
   <script>
